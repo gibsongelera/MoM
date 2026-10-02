@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import { useState, type FormEvent } from 'react';
 import { useRouter } from 'next/navigation';

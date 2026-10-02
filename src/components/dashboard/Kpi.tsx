@@ -1,4 +1,4 @@
-﻿/** Shared KPI stat card, port of the repeated .map(k => `...`) block in each
+/** Shared KPI stat card, port of the repeated .map(k => `...`) block in each
  * legacy dashboard's <script> (head/secretary/faculty share this exact
  * shape; admin's is a superset with a sub-caption, see admin/page.tsx). */
 export function Kpi({

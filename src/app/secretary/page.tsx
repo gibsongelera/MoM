@@ -1,4 +1,4 @@
-﻿import { createClient } from '@/lib/supabase/server';
+import { createClient } from '@/lib/supabase/server';
 import { requireRole } from '@/lib/auth/requireRole';
 import { Kpi } from '@/components/dashboard/Kpi';
 

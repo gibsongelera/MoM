@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 /**
  * Port of assets/js/charts.js's Chart.js helpers as React components.

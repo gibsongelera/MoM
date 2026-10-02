@@ -1,0 +1,11 @@
+# Normalize line endings so migrations and sources don't show phantom diffs on Windows.
+* text=auto eol=lf
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.ico binary
+*.webp binary
+*.docx binary
+*.pdf binary
+*.woff binary
+*.woff2 binary

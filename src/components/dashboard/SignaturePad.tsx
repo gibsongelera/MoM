@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 /** Minimal canvas signature pad, port of assets/js/signature.js's core
  * drawing logic (pointer events, not separate mouse/touch handlers - covers

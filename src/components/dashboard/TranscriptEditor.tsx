@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 /** Speaker reassignment: diarization emits speaker_0/speaker_1..., this
  * lets a secretary map each to a real name once. Renaming writes to

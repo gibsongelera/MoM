@@ -1,4 +1,4 @@
-﻿import type { Metadata } from 'next';
+import type { Metadata } from 'next';
 import { requireRole } from '@/lib/auth/requireRole';
 import DashboardShell from '@/components/dashboard/DashboardShell';
 

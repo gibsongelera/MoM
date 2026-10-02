@@ -1,4 +1,4 @@
-﻿import { createClient } from '@/lib/supabase/server';
+import { createClient } from '@/lib/supabase/server';
 import NewDepartmentForm from '@/components/dashboard/NewDepartmentForm';
 
 export default async function AdminDepartmentsPage() {

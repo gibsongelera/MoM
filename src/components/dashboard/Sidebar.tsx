@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 /**
  * Port of buildSidebar() from assets/js/shared.js.

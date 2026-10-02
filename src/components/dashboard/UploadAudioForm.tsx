@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 /**
  * Exercises the full Phase 1-5 pipeline built earlier: signed direct upload

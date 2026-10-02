@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 /**
  * Photo upload replaces the legacy's base64-into-localStorage approach with

@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 /**
  * local_processing_only is deliberately not exposed here: there is no real

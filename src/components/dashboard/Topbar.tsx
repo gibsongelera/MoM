@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 /** Port of buildTopbar() from assets/js/shared.js. Online/offline reflects
  * real navigator.onLine state (the legacy version did too); search is
