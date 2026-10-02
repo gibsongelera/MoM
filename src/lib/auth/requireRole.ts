@@ -18,9 +18,15 @@ export interface DashboardUser {
   position: string | null;
   department_id: string | null;
   photo_path: string | null;
+  /** Signed, time-limited URL for photo_path - the avatars bucket is
+   * private, so the raw path is never directly loadable as an <img src>. */
+  photoUrl: string | null;
 }
 
-export async function requireRole(role: UserRole): Promise<DashboardUser> {
+const AVATAR_URL_TTL_SEC = 60 * 60;
+
+/** Shared by requireRole() and requireAuth() (/profile, reachable by every role). */
+async function loadCurrentUser(): Promise<DashboardUser> {
   const supabase = await createClient();
   const { data } = await supabase.auth.getClaims();
   const userId = data?.claims?.sub;
@@ -37,9 +43,25 @@ export async function requireRole(role: UserRole): Promise<DashboardUser> {
   if (!profile) {
     redirect('/login');
   }
-  if (profile.role !== role) {
-    redirect(ROLE_DASHBOARDS[profile.role as UserRole] ?? '/');
+
+  let photoUrl: string | null = null;
+  if (profile.photo_path) {
+    const { data: signed } = await supabase.storage.from('avatars').createSignedUrl(profile.photo_path, AVATAR_URL_TTL_SEC);
+    photoUrl = signed?.signedUrl ?? null;
   }
 
-  return profile;
+  return { ...profile, photoUrl };
+}
+
+export async function requireRole(role: UserRole): Promise<DashboardUser> {
+  const user = await loadCurrentUser();
+  if (user.role !== role) {
+    redirect(ROLE_DASHBOARDS[user.role] ?? '/');
+  }
+  return user;
+}
+
+/** Any signed-in role - used by /profile, which every role's sidebar links to. */
+export async function requireAuth(): Promise<DashboardUser> {
+  return loadCurrentUser();
 }

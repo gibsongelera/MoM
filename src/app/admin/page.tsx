@@ -1,7 +1,7 @@
 ﻿import { createClient } from '@/lib/supabase/server';
 import { Kpi } from '@/components/dashboard/Kpi';
 import { MeetingsLineChart, TasksDoughnutChart, RolesBarChart, JobsStatusChart } from '@/components/dashboard/charts';
-import { initials } from '@/components/dashboard/Sidebar';
+import { initials } from '@/lib/utils/initials';
 
 /**
  * Port of admin/dashboard.html.

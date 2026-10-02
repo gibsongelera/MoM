@@ -30,6 +30,11 @@ export default async function FacultyDashboardPage() {
   const openTasks = taskRows.filter((t) => t.status !== 'done');
   const doneTasks = taskRows.filter((t) => t.status === 'done').length;
 
+  // Server Component, evaluated once per request at render time - "now" for
+  // this upcoming-meetings filter is supposed to be request time, not a
+  // stable historical value, so the purity rule (aimed at client re-renders)
+  // does not apply here.
+  // eslint-disable-next-line react-hooks/purity
   const now = Date.now();
   const upcoming = (meetings ?? [])
     .filter((m) => new Date(m.starts_at).getTime() >= now - 86400000)

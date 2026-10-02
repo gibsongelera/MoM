@@ -21,7 +21,20 @@ import { requireSession } from '@/lib/ai/guard';
 export const runtime = 'nodejs';
 export const maxDuration = 15;
 
-const ALLOWED_MIME_TYPES = ['audio/webm', 'audio/ogg', 'audio/mpeg', 'audio/mp4', 'audio/wav', 'audio/x-m4a'] as const;
+// Covers what browsers actually report for common audio files: Chrome/Firefox
+// say audio/x-wav or audio/wav for .wav, audio/x-m4a or audio/mp4 for .m4a.
+// ElevenLabs accepts all of these formats downstream.
+const ALLOWED_MIME_TYPES = [
+  'audio/webm',
+  'audio/ogg',
+  'audio/mpeg',
+  'audio/mp4',
+  'audio/wav',
+  'audio/x-wav',
+  'audio/x-m4a',
+  'audio/aac',
+  'audio/flac',
+] as const;
 
 const bodySchema = z.object({
   meetingId: z.string().uuid(),
@@ -31,7 +44,9 @@ const bodySchema = z.object({
 
 function extensionFor(mimeType: string): string {
   const sub = mimeType.split('/')[1] ?? 'webm';
-  return sub === 'x-m4a' ? 'm4a' : sub;
+  if (sub === 'x-m4a') return 'm4a';
+  if (sub === 'x-wav') return 'wav';
+  return sub;
 }
 
 export async function POST(request: Request) {

@@ -1,7 +1,7 @@
 ﻿import { createClient } from '@/lib/supabase/server';
 import { requireRole } from '@/lib/auth/requireRole';
 import { Kpi } from '@/components/dashboard/Kpi';
-import { initials } from '@/components/dashboard/Sidebar';
+import { initials } from '@/lib/utils/initials';
 
 /** Port of head/dashboard.html. RLS (sm_can_see_meeting / profiles_select)
  * already scopes meetings/tasks/profiles to this head's department, so the

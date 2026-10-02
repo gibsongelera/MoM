@@ -17,6 +17,7 @@ import { useMemo } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { ROLE_LABEL, type UserRole } from '@/lib/types/domain';
 import type { DashboardUser } from '@/lib/auth/requireRole';
+import { initials } from '@/lib/utils/initials';
 
 type NavLink = { href: string; icon: string; label: string };
 
@@ -60,26 +61,13 @@ const NAV_LINKS: Record<UserRole, NavLink[]> = {
   ],
 };
 
-export function initials(name: string): string {
-  return (
-    name
-      .split(/\s+/)
-      .slice(0, 2)
-      .map((s) => s[0]?.toUpperCase() ?? '')
-      .join('') || 'U'
-  );
-}
-
-export function Avatar({ user, className }: { user: DashboardUser; className?: string }) {
+export function Avatar({ user, className, photoUrl }: { user: DashboardUser; className?: string; photoUrl?: string | null }) {
   const size = className ?? 'w-9 h-9 text-body-sm';
-  if (user.photo_path) {
+  const src = photoUrl ?? user.photoUrl;
+  if (src) {
     return (
-      // eslint-disable-next-line @next/next/no-img-element -- avatar source is a Supabase Storage path, not a static asset next/image can optimize
-      <img
-        src={user.photo_path}
-        alt={user.name}
-        className={`${size} rounded-full object-cover border border-outline-variant`}
-      />
+      // eslint-disable-next-line @next/next/no-img-element -- source is a signed Supabase Storage URL (time-limited), not a static asset next/image can cache/optimize
+      <img src={src} alt={user.name} className={`${size} rounded-full object-cover border border-outline-variant`} />
     );
   }
   return (

@@ -16,9 +16,14 @@
  *     first-party code sample on the public docs pages as of this writing —
  *     verify it against one real webhook delivery (log the raw header and
  *     body once) before relying on it in production.
- *   - `keyterms` array encoding for multipart is unconfirmed by the docs;
- *     sent here as a single JSON-encoded field. If ElevenLabs rejects it,
- *     the error response will say so — try repeated `keyterms[]` fields next.
+ *   - `keyterms` is an array field (OpenAPI: type array, items string), sent
+ *     over multipart the standard way arrays are encoded in form-data: one
+ *     repeated `keyterms` field per term, plain (unquoted) strings - NOT one
+ *     field holding `JSON.stringify(array)`. That encoding was tried first
+ *     and produced "All keywords must be less than 50 characters" on every
+ *     request regardless of individual term length, because the whole
+ *     JSON-stringified blob was being read back as a single keyterm.
+ *     Confirmed 50-char/5-word/no-`<>{}[]\`-chars limits per term.
  */
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import type { AsrLanguage, AsrProvider, AsrRequest, AsrResult, AsrSubmission, AsrWord } from './types';
@@ -56,7 +61,25 @@ async function submit(req: AsrRequest): Promise<AsrSubmission> {
   form.append('diarize', String(req.diarize));
   if (req.diarize) form.append('num_speakers', '32');
   form.append('no_verbatim', String(req.noVerbatim));
-  if (req.keyterms.length) form.append('keyterms', JSON.stringify(req.keyterms));
+  // Defense-in-depth: keyterms.ts already truncates to <49 chars / <=5 words
+  // and strips the characters ElevenLabs prohibits, but this is the actual
+  // network boundary - re-enforce the same limits here too, so a future
+  // upstream regression fails locally in a filter rather than silently
+  // reaching the API with an invalid term again.
+  //
+  // `keyterms` is an array field. A single multipart field whose value is
+  // `JSON.stringify(array)` is NOT how form-data arrays are encoded - that
+  // sends one field containing a string like `["ZPPSU","CICS",...]`, which
+  // ElevenLabs then treats as ONE keyterm. That string is both far longer
+  // than 50 characters and contains the prohibited `[`/`]`/`"` characters,
+  // which is exactly the "All keywords must be less than 50 characters"
+  // error this kept producing regardless of how short each real term was.
+  // The correct encoding is one repeated `keyterms` field per term.
+  const PROHIBITED_CHARS = /[<>{}[\]\\]/g;
+  const safeKeyterms = req.keyterms
+    .map((k) => k.trim().replace(PROHIBITED_CHARS, ''))
+    .filter((k) => k.length > 0 && k.length < 50);
+  for (const term of safeKeyterms) form.append('keyterms', term);
   form.append('webhook', 'true');
   form.append('webhook_metadata', JSON.stringify({ transcriptionJobId: req.webhookRef }));
 

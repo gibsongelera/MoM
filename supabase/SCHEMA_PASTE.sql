@@ -12,6 +12,11 @@
 --   0004_storage.sql
 --   0005_reference_data.sql
 --   0006_profile_privilege_guard.sql
+--   0007_privacy.sql
+--   0008_transcription.sql
+--   0009_transcription_rls.sql
+--   0010_minutes_ai_action_items.sql
+--   0011_amend_minutes_body.sql
 --
 -- Usage: paste this whole file into the Supabase SQL editor and run it once, on
 -- a project where these objects do not exist yet. The editor sends the script as
@@ -1514,6 +1519,310 @@ create trigger profiles_guard_privileges
 -- ==========================================================================
 
 -- ==========================================================================
+-- BEGIN 0007_privacy.sql
+-- ==========================================================================
+
+-- ============================================================================
+-- Privacy and data-processing disclosure
+--
+-- app_settings.local_processing_only already defaulted to false — the schema
+-- never claimed on-device-only processing, even though the legacy UI badge
+-- did. This adds the field Admin -> Settings needs to surface an honest,
+-- editable processor disclosure instead of a hard-coded claim.
+-- See README.md "Privacy & compliance" for the corresponding text fix.
+-- ============================================================================
+
+alter table app_settings
+  add column data_processing_notice text not null default
+    'Audio recordings are uploaded to Supabase Storage and sent to ElevenLabs for transcription. Transcripts are sent to Anthropic (Claude) to draft summaries, action items, and minutes. All three processors operate under data-processing terms; no recording is processed on-device only. Consult the ZPPSU Data Protection Officer before recording an official meeting.';
+
+-- ==========================================================================
+-- END 0007_privacy.sql
+-- ==========================================================================
+
+-- ==========================================================================
+-- BEGIN 0008_transcription.sql
+-- ==========================================================================
+
+-- ============================================================================
+-- Transcription job tracking
+--
+-- Provider-agnostic: transcription_jobs records what we asked an ASR provider
+-- to do and what came back, independent of which provider (ElevenLabs today,
+-- AssemblyAI as a registered fallback — see src/lib/asr/). raw_response is
+-- kept so a folding bug can be fixed and replayed without re-billing the
+-- provider. transcript_speakers maps a diarized speaker_0/speaker_1 label to
+-- a real person once a secretary assigns it.
+-- ============================================================================
+
+create type transcription_status as enum (
+  'queued', 'uploading', 'processing', 'completed', 'failed', 'cancelled'
+);
+
+create table transcription_jobs (
+  id uuid primary key default gen_random_uuid(),
+  meeting_id uuid not null references meetings (id) on delete cascade,
+  audio_id uuid not null references audio_recordings (id) on delete cascade,
+
+  provider text not null default 'elevenlabs',
+  provider_job_id text,               -- ElevenLabs transcription id
+  model text,                          -- 'scribe_v2'
+
+  requested_language text,             -- 'fil' | 'ceb' | 'eng' | null = auto
+  detected_language text,
+  language_probability numeric(4,3),
+  diarize boolean not null default true,
+  keyterms text[] not null default '{}',
+
+  status transcription_status not null default 'queued',
+  error_code text,
+  error_detail text,
+  attempts integer not null default 0,
+
+  raw_response jsonb,                  -- keep for re-folding without re-billing
+  transcript_id uuid references transcripts (id) on delete set null,
+
+  audio_duration_sec integer,
+  cost_usd numeric(10,4),
+
+  created_by uuid references profiles (id) on delete set null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  completed_at timestamptz,
+
+  constraint transcription_jobs_error_consistent
+    check (status <> 'failed' or error_code is not null)
+);
+
+create index transcription_jobs_meeting_idx on transcription_jobs (meeting_id);
+create unique index transcription_jobs_provider_job_idx
+  on transcription_jobs (provider, provider_job_id)
+  where provider_job_id is not null;
+create index transcription_jobs_status_idx on transcription_jobs (status)
+  where status in ('queued', 'processing');
+
+create trigger transcription_jobs_set_updated_at
+  before update on transcription_jobs
+  for each row execute function set_updated_at();
+
+-- Diarization emits speaker_0, speaker_1... Humans map them to real people.
+create table transcript_speakers (
+  transcript_id uuid not null references transcripts (id) on delete cascade,
+  speaker_label text not null,         -- 'speaker_0'
+  profile_id uuid references profiles (id) on delete set null,
+  display_name text not null,          -- editable; falls back to 'Speaker 1'
+  primary key (transcript_id, speaker_label)
+);
+
+alter table transcripts
+  add column provider text,
+  add column detected_language text,
+  add column diarized boolean not null default false;
+
+-- ==========================================================================
+-- END 0008_transcription.sql
+-- ==========================================================================
+
+-- ==========================================================================
+-- BEGIN 0009_transcription_rls.sql
+-- ==========================================================================
+
+-- ============================================================================
+-- RLS for transcription_jobs and transcript_speakers
+--
+-- Same scoping as transcripts/minutes: visible to whoever can see the
+-- meeting, writable by whoever can edit that meeting's documents (secretary,
+-- chair, department head/secretary, admin). The webhook that actually
+-- populates these rows (src/app/api/webhooks/elevenlabs) runs as ElevenLabs
+-- calling us with no Supabase session, so it uses the service-role client and
+-- bypasses RLS by design — these policies govern the authenticated app UI,
+-- not the webhook.
+-- ============================================================================
+
+alter table transcription_jobs enable row level security;
+alter table transcript_speakers enable row level security;
+
+create policy transcription_jobs_select on transcription_jobs
+  for select to authenticated using (
+    created_by = auth.uid()
+    or sm_can_see_meeting(meeting_id)
+  );
+
+create policy transcription_jobs_insert on transcription_jobs
+  for insert to authenticated with check (
+    created_by = auth.uid() and sm_can_edit_meeting_docs(meeting_id)
+  );
+
+create policy transcription_jobs_update on transcription_jobs
+  for update to authenticated
+  using (sm_can_edit_meeting_docs(meeting_id) or sm_is_admin())
+  with check (sm_can_edit_meeting_docs(meeting_id) or sm_is_admin());
+
+create policy transcription_jobs_delete on transcription_jobs
+  for delete to authenticated using (sm_is_admin());
+
+-- transcript_speakers — visible/editable with the parent transcript's meeting.
+create policy transcript_speakers_select on transcript_speakers
+  for select to authenticated using (
+    exists (
+      select 1 from transcripts t
+      where t.id = transcript_speakers.transcript_id
+        and sm_can_see_meeting(t.meeting_id)
+    )
+  );
+
+create policy transcript_speakers_write on transcript_speakers
+  for all to authenticated
+  using (
+    exists (
+      select 1 from transcripts t
+      where t.id = transcript_speakers.transcript_id
+        and sm_can_edit_meeting_docs(t.meeting_id)
+    )
+  )
+  with check (
+    exists (
+      select 1 from transcripts t
+      where t.id = transcript_speakers.transcript_id
+        and sm_can_edit_meeting_docs(t.meeting_id)
+    )
+  );
+
+-- ==========================================================================
+-- END 0009_transcription_rls.sql
+-- ==========================================================================
+
+-- ==========================================================================
+-- BEGIN 0010_minutes_ai_action_items.sql
+-- ==========================================================================
+
+-- ============================================================================
+-- Staging column for AI-extracted action items.
+--
+-- Claude's action-item extraction returns free-text assignee names and
+-- relative deadlines ("by next Thursday") — tasks.assignee_id is a uuid and
+-- tasks.deadline is a date, so these can't be inserted as task rows without
+-- fabricating a name match or parsing a relative date, either of which is a
+-- real risk on a governance record. Stage the raw extraction here instead;
+-- a secretary resolves each item to a real assignee/deadline before it
+-- becomes a tasks row (see src/lib/types/domain.ts's ExtractedActionItem
+-- comment: "before it becomes a task row"). UI for that resolution step is
+-- Phase 6, not part of this migration.
+-- ============================================================================
+
+alter table minutes
+  add column ai_action_items jsonb not null default '[]'::jsonb;
+
+-- ==========================================================================
+-- END 0010_minutes_ai_action_items.sql
+-- ==========================================================================
+
+-- ==========================================================================
+-- BEGIN 0011_amend_minutes_body.sql
+-- ==========================================================================
+
+-- ============================================================================
+-- amend_minutes() must also carry the edited document body.
+--
+-- minutes_update's RLS policy (0002_rls.sql) requires locked_at is null, so a
+-- plain client-side `.update()` on a locked document is silently accepted by
+-- PostgREST (0 rows matched, no error surfaced without .select()) but writes
+-- nothing. The mom-editor "amend" flow saves the edited call_to_order /
+-- previous_minutes / agenda_items / adjournment via a direct table update
+-- before calling amend_minutes() to clear the lock - on a locked document
+-- that save silently no-ops and the edits are lost. Folding the body write
+-- into this SECURITY DEFINER function (same trick lock_minutes/sign_minutes
+-- already use to touch a locked row) makes the whole amend a single atomic,
+-- successful write.
+-- ============================================================================
+
+-- Adding parameters changes the function's identity (name + arg types), so
+-- CREATE OR REPLACE would leave the old 2-arg overload behind rather than
+-- replacing it. Drop it explicitly first.
+drop function if exists amend_minutes(uuid, text);
+
+create or replace function amend_minutes(
+  p_minutes_id uuid,
+  p_summary text default null,
+  p_call_to_order text default null,
+  p_previous_minutes text default null,
+  p_agenda_items jsonb default null,
+  p_adjournment text default null
+)
+returns minutes
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_row minutes;
+  v_meeting meetings;
+  v_name text;
+  v_amendment jsonb;
+  v_kept jsonb;
+begin
+  select * into v_meeting
+  from meetings
+  where id = (select meeting_id from minutes where id = p_minutes_id);
+
+  if v_meeting.id is null then
+    raise exception 'Minutes % not found', p_minutes_id;
+  end if;
+
+  if not sm_can_edit_meeting_docs(v_meeting.id) then
+    raise exception 'Not permitted to amend these minutes';
+  end if;
+
+  select name into v_name from profiles where id = auth.uid();
+
+  v_amendment := jsonb_build_object(
+    'ts', (extract(epoch from now()) * 1000)::bigint,
+    'byUserId', auth.uid(),
+    'byName', coalesce(v_name, 'Anonymous'),
+    'summary', coalesce(nullif(btrim(p_summary), ''), 'Minutes amended after lock')
+  );
+
+  -- Drop the approving signature; the secretary's own signature survives.
+  select coalesce(jsonb_agg(sig), '[]'::jsonb)
+    into v_kept
+  from jsonb_array_elements((select signatures from minutes where id = p_minutes_id)) sig
+  where coalesce(sig ->> 'role', '') !~* '(dean|chair|head|president)';
+
+  update minutes
+  set signatures = v_kept,
+      locked_at = null,
+      locked_by = null,
+      status = 'pending_approval',
+      amendments = amendments || jsonb_build_array(v_amendment),
+      call_to_order = coalesce(p_call_to_order, call_to_order),
+      previous_minutes = coalesce(p_previous_minutes, previous_minutes),
+      agenda_items = coalesce(p_agenda_items, agenda_items),
+      adjournment = coalesce(p_adjournment, adjournment)
+  where id = p_minutes_id
+  returning * into v_row;
+
+  update meetings set status = 'pending_approval' where id = v_meeting.id;
+
+  perform log_audit('minutes_amended',
+                    'Amended after lock: ' || coalesce(v_row.document_title, v_meeting.title));
+
+  if v_meeting.chair_id is not null then
+    perform notify_user(v_meeting.chair_id, 'approval', 'Minutes require re-approval',
+                        coalesce(v_row.document_title, v_meeting.title) ||
+                        ' was amended after approval and needs your signature again.');
+  end if;
+
+  return v_row;
+end;
+$$;
+
+grant execute on function amend_minutes(uuid, text, text, text, jsonb, text) to authenticated;
+
+-- ==========================================================================
+-- END 0011_amend_minutes_body.sql
+-- ==========================================================================
+
+-- ==========================================================================
 -- Migration bookkeeping — keeps scripts/db-push.mjs in sync
 -- ==========================================================================
 
@@ -1528,5 +1837,10 @@ insert into schema_migrations (name) values
   ('0003_functions.sql'),
   ('0004_storage.sql'),
   ('0005_reference_data.sql'),
-  ('0006_profile_privilege_guard.sql')
+  ('0006_profile_privilege_guard.sql'),
+  ('0007_privacy.sql'),
+  ('0008_transcription.sql'),
+  ('0009_transcription_rls.sql'),
+  ('0010_minutes_ai_action_items.sql'),
+  ('0011_amend_minutes_body.sql')
 on conflict (name) do nothing;

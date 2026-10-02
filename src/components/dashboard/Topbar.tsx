@@ -18,10 +18,12 @@ export default function Topbar({
   title: string;
   onMenuClick: () => void;
 }) {
-  const [online, setOnline] = useState(true);
+  // Lazy initializer, not a setState-in-effect: window is undefined during
+  // the server render pass, so this only reads real navigator.onLine once
+  // the component mounts in the browser.
+  const [online, setOnline] = useState(() => (typeof window === 'undefined' ? true : navigator.onLine));
 
   useEffect(() => {
-    setOnline(navigator.onLine);
     const goOnline = () => setOnline(true);
     const goOffline = () => setOnline(false);
     window.addEventListener('online', goOnline);
