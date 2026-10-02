@@ -7,7 +7,8 @@ export default async function AdminUsersPage() {
   const [{ data: users }, { data: departments }] = await Promise.all([
     supabase
       .from('profiles')
-      .select('id, name, email, role, active, position, department_id, joined_at')
+      .select('id, name, email, role, active, position, department_id, joined_at, requested_role')
+      .order('active', { ascending: true })
       .order('name'),
     supabase.from('departments').select('id, short'),
   ]);

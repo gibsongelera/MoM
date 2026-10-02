@@ -5,19 +5,29 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { FormEvent, Suspense, useMemo, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { ROLE_DASHBOARDS, type UserRole } from '@/lib/types/domain';
+import { safeNextPath } from '@/lib/auth/safe-next';
 
 type DemoAccount = {
   label: string;
   email: string;
-  password: string;
 };
 
+/*
+ * Quick-fill for the defense demo. Emails only: passwords are never shipped in
+ * the client bundle (this repo is public). Shown only when the deployment opts
+ * in with NEXT_PUBLIC_DEMO_LOGINS=1.
+ */
+const SHOW_DEMO_ACCOUNTS = process.env.NEXT_PUBLIC_DEMO_LOGINS === '1';
 const DEMO_ACCOUNTS: DemoAccount[] = [
-  { label: 'Administrator', email: 'admin@zppsu.edu.ph', password: 'admin123' },
-  { label: 'Head / Dean', email: 'president@zppsu.edu.ph', password: 'head123' },
-  { label: 'Secretary', email: 'secretary@zppsu.edu.ph', password: 'sec123' },
-  { label: 'Faculty', email: 'faculty@zppsu.edu.ph', password: 'fac123' },
+  { label: 'Administrator', email: 'admin@zppsu.edu.ph' },
+  { label: 'Head', email: 'president@zppsu.edu.ph' },
+  { label: 'Secretary', email: 'secretary@zppsu.edu.ph' },
+  { label: 'Faculty', email: 'faculty@zppsu.edu.ph' },
 ];
+
+const REASON_MESSAGES: Record<string, string> = {
+  inactive: "This account isn't active yet. An administrator needs to approve it before you can sign in.",
+};
 
 function LoginForm() {
   const router = useRouter();
@@ -26,7 +36,7 @@ function LoginForm() {
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(() => REASON_MESSAGES[params.get('reason') ?? ''] ?? null);
   const [loading, setLoading] = useState(false);
 
   async function onSubmit(e: FormEvent<HTMLFormElement>) {
@@ -53,7 +63,7 @@ function LoginForm() {
           .maybeSingle();
         if (profile?.active === false) {
           await supabase.auth.signOut();
-          setError('Account deactivated. Contact your administrator.');
+          setError(REASON_MESSAGES.inactive);
           return;
         }
         role = profile?.role ?? null;
@@ -62,8 +72,7 @@ function LoginForm() {
       // Honor an explicit redirect target (set when the proxy bounced an
       // unauthenticated visit to a protected page); otherwise go straight to
       // this user's own dashboard rather than the public landing page.
-      const next = params.get('next');
-      const destination = next && next.startsWith('/') ? next : (role && ROLE_DASHBOARDS[role]) || '/';
+      const destination = safeNextPath(params.get('next')) ?? ((role && ROLE_DASHBOARDS[role]) || '/');
       router.push(destination);
       router.refresh();
     } finally {
@@ -89,6 +98,7 @@ function LoginForm() {
             <input
               id="email"
               type="email"
+              autoComplete="username"
               required
               className="w-full px-md py-md bg-surface-container-low border-2 border-transparent focus:border-primary focus:ring-0 rounded-lg"
               placeholder="user@zppsu.edu.ph"
@@ -103,6 +113,7 @@ function LoginForm() {
             <input
               id="password"
               type="password"
+              autoComplete="current-password"
               required
               className="w-full px-md py-md bg-surface-container-low border-2 border-transparent focus:border-primary focus:ring-0 rounded-lg"
               placeholder="••••••••"
@@ -112,7 +123,7 @@ function LoginForm() {
           </div>
 
           {error ? (
-            <div className="text-error font-body-sm bg-error-container p-sm rounded-lg">{error}</div>
+            <div role="alert" className="text-error font-body-sm bg-error-container p-sm rounded-lg">{error}</div>
           ) : null}
 
           <button
@@ -136,25 +147,27 @@ function LoginForm() {
           </p>
         </form>
 
-        <div className="mt-lg p-md bg-surface-container rounded-lg border border-outline-variant">
-          <h2 className="font-label-caps text-on-surface mb-sm">Defense Demo Accounts</h2>
-          <div className="grid grid-cols-2 gap-xs">
-            {DEMO_ACCOUNTS.map((a) => (
-              <button
-                key={a.email}
-                type="button"
-                onClick={() => {
-                  setEmail(a.email);
-                  setPassword(a.password);
-                }}
-                className="text-left p-sm rounded-lg bg-surface-container-lowest border border-outline-variant hover:border-primary transition-colors"
-              >
-                <div className="font-body-sm font-semibold text-primary">{a.label}</div>
-                <div className="font-caption text-on-surface-variant truncate">{a.email}</div>
-              </button>
-            ))}
+        {SHOW_DEMO_ACCOUNTS ? (
+          <div className="mt-lg p-md bg-surface-container rounded-lg border border-outline-variant">
+            <h2 className="font-label-caps text-label-caps text-on-surface mb-sm">Demo accounts</h2>
+            <div className="grid grid-cols-2 gap-xs">
+              {DEMO_ACCOUNTS.map((a) => (
+                <button
+                  key={a.email}
+                  type="button"
+                  onClick={() => {
+                    setEmail(a.email);
+                    document.getElementById('password')?.focus();
+                  }}
+                  className="text-left p-sm rounded-lg bg-surface-container-lowest border border-outline-variant hover:border-primary transition-colors"
+                >
+                  <div className="font-body-sm font-semibold text-primary">{a.label}</div>
+                  <div className="font-caption text-on-surface-variant truncate">{a.email}</div>
+                </button>
+              ))}
+            </div>
           </div>
-        </div>
+        ) : null}
       </div>
     </main>
   );

@@ -15,6 +15,8 @@ export interface UserRow {
   position: string | null;
   department_id: string | null;
   joined_at: string | null;
+  /** Role asked for at sign-up; grants nothing until an admin approves it. */
+  requested_role: UserRole | null;
 }
 
 const ROLES: UserRole[] = ['admin', 'head', 'secretary', 'faculty'];
@@ -32,34 +34,40 @@ export default function UsersTable({
   const [error, setError] = useState<string | null>(null);
   const deptShort = new Map(departments.map((d) => [d.id, d.short]));
 
-  async function toggleActive(user: UserRow) {
+  /**
+   * Updates one profile and treats "0 rows changed" as a failure: RLS turns a
+   * denied UPDATE into a silent no-op, which must not read as success.
+   */
+  async function updateProfile(user: UserRow, patch: Partial<Pick<UserRow, 'role' | 'active' | 'requested_role'>>) {
     setPendingId(user.id);
     setError(null);
-    const { error: updateError } = await supabase.from('profiles').update({ active: !user.active }).eq('id', user.id);
+    const { data, error: updateError } = await supabase.from('profiles').update(patch).eq('id', user.id).select('id');
     setPendingId(null);
-    if (updateError) {
-      setError(updateError.message);
+    if (updateError || !data?.length) {
+      setError(`Couldn't update ${user.name}. ${updateError?.message ?? 'You may not have permission to change this account.'}`);
       return;
     }
     router.refresh();
   }
 
-  async function changeRole(user: UserRow, role: UserRole) {
+  function toggleActive(user: UserRow) {
+    void updateProfile(user, { active: !user.active });
+  }
+
+  function changeRole(user: UserRow, role: UserRole) {
     if (role === user.role) return;
-    setPendingId(user.id);
-    setError(null);
-    const { error: updateError } = await supabase.from('profiles').update({ role }).eq('id', user.id);
-    setPendingId(null);
-    if (updateError) {
-      setError(updateError.message);
-      return;
-    }
-    router.refresh();
+    if (!window.confirm(`Change ${user.name}'s role from ${user.role} to ${role}?`)) return;
+    void updateProfile(user, { role });
+  }
+
+  function approve(user: UserRow) {
+    const role = user.requested_role ?? 'faculty';
+    void updateProfile(user, { role, active: true, requested_role: null });
   }
 
   return (
     <div className="bg-surface-container-lowest border border-outline-variant rounded-xl overflow-hidden">
-      {error ? <div className="p-sm bg-error-container text-error font-body-sm">{error}</div> : null}
+      {error ? <div role="alert" className="p-sm bg-error-container text-error font-body-sm">{error}</div> : null}
       <div className="overflow-x-auto">
         <table className="w-full text-left text-body-sm">
           <thead className="bg-surface-container-low border-b border-outline-variant">
@@ -88,6 +96,7 @@ export default function UsersTable({
                 </td>
                 <td className="py-sm px-md">
                   <select
+                    aria-label={`Role for ${u.name}`}
                     value={u.role}
                     disabled={pendingId === u.id}
                     onChange={(e) => changeRole(u, e.target.value as UserRole)}
@@ -103,10 +112,24 @@ export default function UsersTable({
                 <td className="py-sm px-md">{u.department_id ? (deptShort.get(u.department_id) ?? '—') : '—'}</td>
                 <td className="py-sm px-md">
                   <span className={`pill ${u.active ? 'pill-done' : 'pill-overdue'}`}>{u.active ? 'Active' : 'Inactive'}</span>
+                  {!u.active && u.requested_role ? (
+                    <div className="font-caption text-on-surface-variant mt-xs">Requested: {u.requested_role}</div>
+                  ) : null}
                 </td>
                 <td className="py-sm px-md text-on-surface-variant">{u.joined_at ?? ''}</td>
-                <td className="py-sm px-md text-right">
+                <td className="py-sm px-md text-right whitespace-nowrap">
+                  {!u.active && u.requested_role ? (
+                    <button
+                      type="button"
+                      onClick={() => approve(u)}
+                      disabled={pendingId === u.id}
+                      className="mr-md text-primary hover:underline font-semibold disabled:opacity-50"
+                    >
+                      Approve as {u.requested_role}
+                    </button>
+                  ) : null}
                   <button
+                    type="button"
                     onClick={() => toggleActive(u)}
                     disabled={pendingId === u.id}
                     className="text-primary hover:underline font-semibold disabled:opacity-50"

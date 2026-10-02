@@ -4,6 +4,7 @@
  * Server-only. ANTHROPIC_API_KEY must never reach the browser, so nothing here
  * may be imported from a client component.
  */
+import 'server-only';
 import Anthropic, { APIConnectionError, APIError, RateLimitError } from '@anthropic-ai/sdk';
 
 /**
@@ -25,8 +26,11 @@ type MessageLike = {
   };
 };
 
-/** Claude Opus 5. Thinking is on by default on this model. */
-export const MODEL = 'claude-opus-5';
+/**
+ * Claude Opus 5 by default (thinking is on by default on this model).
+ * Override with ANTHROPIC_MODEL without a code change.
+ */
+export const MODEL = process.env.ANTHROPIC_MODEL || 'claude-opus-5';
 
 /**
  * max_tokens caps thinking *and* response text together on Opus 5. Sized with

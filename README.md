@@ -28,10 +28,10 @@ The login page lists four pre-seeded accounts that demonstrate role separation:
 
 | Role | Email | Password |
 |------|-------|----------|
-| **System Administrator** | `admin@zppsu.edu.ph` | `admin123` |
-| **College Dean / Head** | `president@zppsu.edu.ph` | `head123` |
-| **Faculty Secretary** | `secretary@zppsu.edu.ph` | `sec123` |
-| **Faculty Member** | `faculty@zppsu.edu.ph` | `fac123` |
+| **System Administrator** | `admin@zppsu.edu.ph` | `DEMO_PASSWORD_*` in `.env.local` |
+| **College Dean / Head** | `president@zppsu.edu.ph` | `DEMO_PASSWORD_*` in `.env.local` |
+| **Faculty Secretary** | `secretary@zppsu.edu.ph` | `DEMO_PASSWORD_*` in `.env.local` |
+| **Faculty Member** | `faculty@zppsu.edu.ph` | `DEMO_PASSWORD_*` in `.env.local` |
 
 Click any account chip on the login page to auto-fill the credentials.
 

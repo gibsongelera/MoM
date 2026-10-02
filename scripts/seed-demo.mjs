@@ -14,6 +14,7 @@
  * Idempotent: existing users are reused, content is keyed on natural columns.
  */
 import { createClient } from '@supabase/supabase-js';
+import { demoPassword } from './lib/demo-passwords.mjs';
 
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -28,6 +29,8 @@ if (!url || !serviceKey) {
 }
 
 const RESET = process.argv.includes('--reset');
+// Re-running the seed must not undo a password rotation on the live project.
+const RESET_PASSWORDS = process.argv.includes('--reset-passwords');
 const db = createClient(url, serviceKey, { auth: { persistSession: false } });
 
 /** Philippine time, so the seeded schedule reads correctly in the UI. */
@@ -40,21 +43,21 @@ const msAgo = (h) => Date.now() - h * 3600_000;
 // Accounts. Passwords match the chips on the login page.
 // ---------------------------------------------------------------------------
 const USERS = [
-  { key: 'admin',     email: 'admin@zppsu.edu.ph',       password: 'admin123', name: 'Dr. Elena Dominguez',      role: 'admin',     dept: 'ICT',  position: 'System Administrator',     joined: '2023-08-10' },
-  { key: 'head',      email: 'president@zppsu.edu.ph',   password: 'head123',  name: 'Engr. Ricardo Gomez',      role: 'head',      dept: 'CICS', position: 'College Dean (CICS)',      joined: '2022-06-01' },
-  { key: 'secretary', email: 'secretary@zppsu.edu.ph',   password: 'sec123',   name: 'Sarah Torres',             role: 'secretary', dept: 'CICS', position: 'Faculty Secretary (CICS)', joined: '2024-01-15' },
-  { key: 'faculty',   email: 'faculty@zppsu.edu.ph',     password: 'fac123',   name: 'Prof. Juan Dela Cruz',     role: 'faculty',   dept: 'CICS', position: 'Associate Professor',      joined: '2023-09-01' },
+  { key: 'admin',     email: 'admin@zppsu.edu.ph',       pw: 'admin', name: 'Dr. Elena Dominguez',      role: 'admin',     dept: 'ICT',  position: 'System Administrator',     joined: '2023-08-10' },
+  { key: 'head',      email: 'president@zppsu.edu.ph',   pw: 'head',  name: 'Engr. Ricardo Gomez',      role: 'head',      dept: 'CICS', position: 'College Dean (CICS)',      joined: '2022-06-01' },
+  { key: 'secretary', email: 'secretary@zppsu.edu.ph',   pw: 'secretary',   name: 'Sarah Torres',             role: 'secretary', dept: 'CICS', position: 'Faculty Secretary (CICS)', joined: '2024-01-15' },
+  { key: 'faculty',   email: 'faculty@zppsu.edu.ph',     pw: 'faculty',   name: 'Prof. Juan Dela Cruz',     role: 'faculty',   dept: 'CICS', position: 'Associate Professor',      joined: '2023-09-01' },
 
-  { key: 'f2',  email: 'msantos@zppsu.edu.ph',     password: 'fac123',  name: 'Dr. Maria Santos',          role: 'faculty',   dept: 'CICS', position: 'Professor I',        joined: '2022-08-12' },
-  { key: 'f3',  email: 'mreyes@zppsu.edu.ph',      password: 'fac123',  name: 'Prof. Mark Reyes',          role: 'faculty',   dept: 'CICS', position: 'Instructor III',     joined: '2024-02-01' },
-  { key: 'f4',  email: 'avillanueva@zppsu.edu.ph', password: 'fac123',  name: 'Prof. Antonette Villanueva', role: 'faculty',  dept: 'CICS', position: 'Assistant Professor', joined: '2023-03-20' },
-  { key: 'f5',  email: 'lreyes@zppsu.edu.ph',      password: 'fac123',  name: 'Engr. Liza Reyes',          role: 'faculty',   dept: 'CET',  position: 'Instructor II',      joined: '2024-08-01' },
-  { key: 'h2',  email: 'amendoza@zppsu.edu.ph',    password: 'head123', name: 'Dr. Antonio Mendoza',       role: 'head',      dept: 'CET',  position: 'College Dean (CET)', joined: '2021-06-01' },
-  { key: 's2',  email: 'jluna@zppsu.edu.ph',       password: 'sec123',  name: 'James Luna',                role: 'secretary', dept: 'CET',  position: 'Secretary (CET)',    joined: '2024-05-01' },
+  { key: 'f2',  email: 'msantos@zppsu.edu.ph',     pw: 'faculty',  name: 'Dr. Maria Santos',          role: 'faculty',   dept: 'CICS', position: 'Professor I',        joined: '2022-08-12' },
+  { key: 'f3',  email: 'mreyes@zppsu.edu.ph',      pw: 'faculty',  name: 'Prof. Mark Reyes',          role: 'faculty',   dept: 'CICS', position: 'Instructor III',     joined: '2024-02-01' },
+  { key: 'f4',  email: 'avillanueva@zppsu.edu.ph', pw: 'faculty',  name: 'Prof. Antonette Villanueva', role: 'faculty',  dept: 'CICS', position: 'Assistant Professor', joined: '2023-03-20' },
+  { key: 'f5',  email: 'lreyes@zppsu.edu.ph',      pw: 'faculty',  name: 'Engr. Liza Reyes',          role: 'faculty',   dept: 'CET',  position: 'Instructor II',      joined: '2024-08-01' },
+  { key: 'h2',  email: 'amendoza@zppsu.edu.ph',    pw: 'head', name: 'Dr. Antonio Mendoza',       role: 'head',      dept: 'CET',  position: 'College Dean (CET)', joined: '2021-06-01' },
+  { key: 's2',  email: 'jluna@zppsu.edu.ph',       pw: 'secretary',  name: 'James Luna',                role: 'secretary', dept: 'CET',  position: 'Secretary (CET)',    joined: '2024-05-01' },
 
-  { key: 'st1', email: 'kmendoza@zppsu.edu.ph', password: 'fac123', name: 'Karla Mendoza', role: 'faculty', dept: 'CICS', position: 'BSCS Student (Capstone)', joined: '2024-08-15' },
-  { key: 'st2', email: 'jaquino@zppsu.edu.ph',  password: 'fac123', name: 'Joshua Aquino',  role: 'faculty', dept: 'CICS', position: 'BSCS Student (Capstone)', joined: '2024-08-15' },
-  { key: 'st3', email: 'plim@zppsu.edu.ph',     password: 'fac123', name: 'Patricia Lim',   role: 'faculty', dept: 'CICS', position: 'BSCS Student (Capstone)', joined: '2024-08-15' },
+  { key: 'st1', email: 'kmendoza@zppsu.edu.ph', pw: 'faculty', name: 'Karla Mendoza', role: 'faculty', dept: 'CICS', position: 'BSCS Student (Capstone)', joined: '2024-08-15' },
+  { key: 'st2', email: 'jaquino@zppsu.edu.ph',  pw: 'faculty', name: 'Joshua Aquino',  role: 'faculty', dept: 'CICS', position: 'BSCS Student (Capstone)', joined: '2024-08-15' },
+  { key: 'st3', email: 'plim@zppsu.edu.ph',     pw: 'faculty', name: 'Patricia Lim',   role: 'faculty', dept: 'CICS', position: 'BSCS Student (Capstone)', joined: '2024-08-15' },
 ];
 
 const dept = {};
@@ -105,8 +108,10 @@ async function seedUsers() {
 
     if (account) {
       // Keep the password and metadata in sync with this file on re-runs.
+      // Existing accounts keep their (possibly rotated) password unless the
+      // caller explicitly asks to reset it.
       const { data, error } = await db.auth.admin.updateUserById(account.id, {
-        password: u.password,
+        ...(RESET_PASSWORDS ? { password: demoPassword(u.pw) } : {}),
         email_confirm: true,
         user_metadata: metadata,
       });
@@ -116,7 +121,7 @@ async function seedUsers() {
     } else {
       const { data, error } = await db.auth.admin.createUser({
         email: u.email,
-        password: u.password,
+        password: demoPassword(u.pw),
         email_confirm: true,
         user_metadata: metadata,
       });
@@ -790,10 +795,7 @@ async function main() {
   await seedNotificationsAndAudit();
 
   console.log('\nDemo data ready. Sign in with:');
-  console.log('  admin@zppsu.edu.ph     / admin123');
-  console.log('  president@zppsu.edu.ph / head123');
-  console.log('  secretary@zppsu.edu.ph / sec123');
-  console.log('  faculty@zppsu.edu.ph   / fac123');
+  console.log('  admin@ / president@ / secretary@ / faculty@zppsu.edu.ph (passwords: DEMO_PASSWORD_* in .env.local)');
 }
 
 main().catch((err) => {

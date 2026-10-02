@@ -28,20 +28,15 @@ export default function ApprovalsList({ pending }: { pending: PendingApproval[] 
     }
     setSaving(true);
     setError(null);
-    const { error: signError } = await supabase.rpc('sign_minutes', {
+    // One RPC signs as approver and locks atomically, so a signed document is
+    // never left unlocked if the second step of a two-call flow failed.
+    const { error: approveError } = await supabase.rpc('approve_minutes', {
       p_minutes_id: item.minutesId,
-      p_role_label: 'Head',
       p_data_url: signature,
     });
-    if (signError) {
-      setSaving(false);
-      setError(signError.message);
-      return;
-    }
-    const { error: lockError } = await supabase.rpc('lock_minutes', { p_minutes_id: item.minutesId });
     setSaving(false);
-    if (lockError) {
-      setError(lockError.message);
+    if (approveError) {
+      setError(approveError.message);
       return;
     }
     setOpenId(null);

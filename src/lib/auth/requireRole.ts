@@ -36,12 +36,18 @@ async function loadCurrentUser(): Promise<DashboardUser> {
 
   const { data: profile } = await supabase
     .from('profiles')
-    .select('id, name, email, role, position, department_id, photo_path')
+    .select('id, name, email, role, position, department_id, photo_path, active')
     .eq('id', userId)
     .single();
 
   if (!profile) {
     redirect('/login');
+  }
+  // Pending or deactivated accounts get no dashboard. RLS denies them data
+  // anyway (sm_* helpers require an active profile); this explains why.
+  const { active, ...rest } = profile;
+  if (!active) {
+    redirect('/login?reason=inactive');
   }
 
   let photoUrl: string | null = null;
@@ -50,7 +56,7 @@ async function loadCurrentUser(): Promise<DashboardUser> {
     photoUrl = signed?.signedUrl ?? null;
   }
 
-  return { ...profile, photoUrl };
+  return { ...rest, photoUrl };
 }
 
 export async function requireRole(role: UserRole): Promise<DashboardUser> {

@@ -54,10 +54,10 @@ npm run db:seed-users-only
 
 This creates/updates only:
 
-- `admin@zppsu.edu.ph` / `admin123`
-- `president@zppsu.edu.ph` / `head123`
-- `secretary@zppsu.edu.ph` / `sec123`
-- `faculty@zppsu.edu.ph` / `fac123`
+- `admin@zppsu.edu.ph` (password: `DEMO_PASSWORD_*` in `.env.local`)
+- `president@zppsu.edu.ph` (password: `DEMO_PASSWORD_*` in `.env.local`)
+- `secretary@zppsu.edu.ph` (password: `DEMO_PASSWORD_*` in `.env.local`)
+- `faculty@zppsu.edu.ph` (password: `DEMO_PASSWORD_*` in `.env.local`)
 
 and upserts corresponding `profiles` entries plus `departments.head_id` for
 `CICS` and `ICT`.
@@ -113,7 +113,7 @@ user rather than trusting the UI:
 ```js
 import { createClient } from '@supabase/supabase-js';
 const c = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY);
-await c.auth.signInWithPassword({ email: 'faculty@zppsu.edu.ph', password: 'fac123' });
+await c.auth.signInWithPassword({ email: 'faculty@zppsu.edu.ph', password: process.env.DEMO_PASSWORD_FACULTY });
 const { data } = await c.from('meetings').select('title, department_id');
 // expect: only CICS meetings, or meetings this account attends
 ```

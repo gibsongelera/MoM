@@ -26,16 +26,15 @@ export default function RegisterPage() {
   useEffect(() => {
     let alive = true;
     (async () => {
-      const { data, error } = await supabase
-        .from('departments')
-        .select('id,name,short')
-        .order('short', { ascending: true });
+      // Signed-out visitors cannot read the departments table; this definer
+      // RPC exposes only id/name/short for the picker.
+      const { data, error } = await supabase.rpc('list_departments_public');
       if (!alive) return;
       if (error) {
-        setError(error.message);
+        setError("We couldn't load the list of departments. Refresh the page to try again.");
         return;
       }
-      const rows = (data ?? []) as Department[];
+      const rows = ((data ?? []) as Department[]).sort((a, b) => a.short.localeCompare(b.short));
       setDepartments(rows);
       if (rows[0]) setDepartmentId(rows[0].id);
     })();
@@ -48,6 +47,10 @@ export default function RegisterPage() {
     e.preventDefault();
     setError(null);
     setOk(null);
+    if (password.length < 8) {
+      setError('Use a password of at least 8 characters.');
+      return;
+    }
     if (password !== password2) {
       setError('Passwords do not match.');
       return;
@@ -59,18 +62,18 @@ export default function RegisterPage() {
 
     setLoading(true);
     try {
-      // Preserve legacy behavior: self-registered users require approval.
-      const userRole = role === 'admin' ? 'admin' : role;
+      // Every self-registered account starts as inactive faculty (enforced by
+      // the handle_new_user trigger). `role` is only a request an
+      // administrator reviews in User Management.
       const { error: signUpError } = await supabase.auth.signUp({
         email: email.trim().toLowerCase(),
         password,
         options: {
           data: {
             name: name.trim(),
-            role: userRole,
+            role,
             position: position.trim(),
             department_id: departmentId,
-            active: role === 'admin' ? false : true,
           },
         },
       });
@@ -80,14 +83,12 @@ export default function RegisterPage() {
         return;
       }
 
-      if (role === 'admin') {
-        setOk('Account created. Administrator approval pending.');
-      } else {
-        setOk('Account created. You can now log in.');
-      }
+      // Sign-up may open a session; the account can't use it until approved.
+      await supabase.auth.signOut();
+      setOk("Account created. An administrator will review your request — you can sign in once it's approved.");
       setTimeout(() => {
         router.push('/login');
-      }, 900);
+      }, 4000);
     } finally {
       setLoading(false);
     }
@@ -145,7 +146,7 @@ export default function RegisterPage() {
           </div>
           <div>
             <label className="block font-label-caps text-on-surface mb-xs" htmlFor="role">
-              Role
+              Requested role
             </label>
             <select
               id="role"
@@ -156,8 +157,8 @@ export default function RegisterPage() {
             >
               <option value="faculty">Faculty</option>
               <option value="secretary">Secretary</option>
-              <option value="head">Head / President</option>
-              <option value="admin">System Administrator (requires approval)</option>
+              <option value="head">Head</option>
+              <option value="admin">System Administrator</option>
             </select>
           </div>
           <div>
@@ -186,9 +187,10 @@ export default function RegisterPage() {
               id="pw1"
               type="password"
               required
-              minLength={6}
+              minLength={8}
+              autoComplete="new-password"
               className="w-full px-md py-md bg-surface-container-low border-2 border-transparent focus:border-primary focus:ring-0 rounded-lg"
-              placeholder="At least 6 characters"
+              placeholder="At least 8 characters"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
             />
@@ -200,6 +202,7 @@ export default function RegisterPage() {
             <input
               id="pw2"
               type="password"
+              autoComplete="new-password"
               required
               className="w-full px-md py-md bg-surface-container-low border-2 border-transparent focus:border-primary focus:ring-0 rounded-lg"
               placeholder="Repeat password"
@@ -209,12 +212,12 @@ export default function RegisterPage() {
           </div>
 
           {error ? (
-            <div className="md:col-span-2 text-error bg-error-container p-sm rounded-lg font-body-sm">
+            <div role="alert" className="md:col-span-2 text-error bg-error-container p-sm rounded-lg font-body-sm">
               {error}
             </div>
           ) : null}
           {ok ? (
-            <div className="md:col-span-2 text-success bg-success-container p-sm rounded-lg font-body-sm">
+            <div role="status" className="md:col-span-2 text-success bg-success-container p-sm rounded-lg font-body-sm">
               {ok}
             </div>
           ) : null}

@@ -1,6 +1,5 @@
 import { createServerClient } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
-import { ROLE_DASHBOARDS, type UserRole } from '@/lib/types/domain';
 
 /** Routes reachable without a session. */
 const PUBLIC_PATHS = ['/', '/login', '/register', '/forgot-password', '/auth'];
@@ -57,11 +56,12 @@ export async function updateSession(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  // Signed in users may still open /login to switch accounts.
+  // Signed in users may still open /login to switch accounts. user_metadata is
+  // user-editable, so it is never used to pick a role dashboard here; the home
+  // page routes from the profile instead.
   if (pathname === '/register' || pathname === '/forgot-password') {
-    const role = (claims.user_metadata as { role?: string } | undefined)?.role;
     const url = request.nextUrl.clone();
-    url.pathname = (role && ROLE_DASHBOARDS[role as UserRole]) || '/';
+    url.pathname = '/';
     url.search = '';
     return NextResponse.redirect(url);
   }

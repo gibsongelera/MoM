@@ -7,6 +7,7 @@
  * handler that serves an authenticated user directly; use
  * @/lib/supabase/server for that so RLS stays the actual access boundary.
  */
+import 'server-only';
 import { createClient as createSupabaseClient } from '@supabase/supabase-js';
 
 export function createAdminClient() {

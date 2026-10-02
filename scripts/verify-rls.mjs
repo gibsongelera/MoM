@@ -9,6 +9,7 @@
  * a control proves nothing; this proves the database refuses.
  */
 import { createClient } from '@supabase/supabase-js';
+import { demoPassword } from './lib/demo-passwords.mjs';
 
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const anon = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
@@ -19,11 +20,11 @@ if (!url || !anon) {
 }
 
 const ACCOUNTS = {
-  admin: ['admin@zppsu.edu.ph', 'admin123'],
-  head: ['president@zppsu.edu.ph', 'head123'],
-  secretary: ['secretary@zppsu.edu.ph', 'sec123'],
-  faculty: ['faculty@zppsu.edu.ph', 'fac123'],
-  cetFaculty: ['lreyes@zppsu.edu.ph', 'fac123'],
+  admin: ['admin@zppsu.edu.ph', demoPassword('admin')],
+  head: ['president@zppsu.edu.ph', demoPassword('head')],
+  secretary: ['secretary@zppsu.edu.ph', demoPassword('secretary')],
+  faculty: ['faculty@zppsu.edu.ph', demoPassword('faculty')],
+  cetFaculty: ['lreyes@zppsu.edu.ph', demoPassword('faculty')],
 };
 
 let pass = 0;

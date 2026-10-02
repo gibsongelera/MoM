@@ -26,6 +26,7 @@
  * profile row are re-synced with this file.
  */
 import { createClient } from '@supabase/supabase-js';
+import { demoPassword } from './lib/demo-passwords.mjs';
 
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -45,10 +46,10 @@ const db = createClient(url, serviceKey, { auth: { persistSession: false } });
 // Accounts. Passwords match the chips on the login page.
 // ---------------------------------------------------------------------------
 const USERS = [
-  { key: 'admin',     email: 'admin@zppsu.edu.ph',     password: 'admin123', name: 'Dr. Elena Dominguez', role: 'admin',     dept: 'ICT',  position: 'System Administrator',     joined: '2023-08-10' },
-  { key: 'head',      email: 'president@zppsu.edu.ph', password: 'head123',  name: 'Engr. Ricardo Gomez', role: 'head',      dept: 'CICS', position: 'College Dean (CICS)',      joined: '2022-06-01' },
-  { key: 'secretary', email: 'secretary@zppsu.edu.ph', password: 'sec123',   name: 'Sarah Torres',        role: 'secretary', dept: 'CICS', position: 'Faculty Secretary (CICS)', joined: '2024-01-15' },
-  { key: 'faculty',   email: 'faculty@zppsu.edu.ph',   password: 'fac123',   name: 'Prof. Juan Dela Cruz', role: 'faculty',  dept: 'CICS', position: 'Associate Professor',      joined: '2023-09-01' },
+  { key: 'admin',     email: 'admin@zppsu.edu.ph',     pw: 'admin', name: 'Dr. Elena Dominguez', role: 'admin',     dept: 'ICT',  position: 'System Administrator',     joined: '2023-08-10' },
+  { key: 'head',      email: 'president@zppsu.edu.ph', pw: 'head',  name: 'Engr. Ricardo Gomez', role: 'head',      dept: 'CICS', position: 'College Dean (CICS)',      joined: '2022-06-01' },
+  { key: 'secretary', email: 'secretary@zppsu.edu.ph', pw: 'secretary',   name: 'Sarah Torres',        role: 'secretary', dept: 'CICS', position: 'Faculty Secretary (CICS)', joined: '2024-01-15' },
+  { key: 'faculty',   email: 'faculty@zppsu.edu.ph',   pw: 'faculty',   name: 'Prof. Juan Dela Cruz', role: 'faculty',  dept: 'CICS', position: 'Associate Professor',      joined: '2023-09-01' },
 ];
 
 /** Department short code -> the account that heads it. */
@@ -116,8 +117,9 @@ async function seedUsers() {
 
     if (account) {
       // Keep the password and metadata in sync with this file on re-runs.
+      // Keep a rotated password unless --reset-passwords is passed.
       const { data, error } = await db.auth.admin.updateUserById(account.id, {
-        password: u.password,
+        ...(process.argv.includes('--reset-passwords') ? { password: demoPassword(u.pw) } : {}),
         email_confirm: true,
         user_metadata: metadata,
       });
@@ -127,7 +129,7 @@ async function seedUsers() {
     } else {
       const { data, error } = await db.auth.admin.createUser({
         email: u.email,
-        password: u.password,
+        password: demoPassword(u.pw),
         email_confirm: true,
         user_metadata: metadata,
       });
@@ -203,7 +205,7 @@ async function main() {
 
   console.log('\nAccounts ready. Sign in with:');
   for (const u of USERS) {
-    console.log(`  ${u.email.padEnd(24)} / ${u.password.padEnd(9)} (${u.role})`);
+    console.log(`  ${u.email.padEnd(24)} / ${demoPassword(u.pw).padEnd(9)} (${u.role})`);
   }
 }
 

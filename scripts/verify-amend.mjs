@@ -13,6 +13,7 @@
  * so the demo walkthrough is unaffected.
  */
 import { createClient } from '@supabase/supabase-js';
+import { demoPassword } from './lib/demo-passwords.mjs';
 
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const anon = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
@@ -38,9 +39,9 @@ const hasSecretarySignature = (sigs) =>
   (sigs ?? []).some((s) => /secretary/i.test(s.role ?? ''));
 
 async function main() {
-  const secretary = await signIn('secretary@zppsu.edu.ph', 'sec123');
-  const head = await signIn('president@zppsu.edu.ph', 'head123');
-  const faculty = await signIn('faculty@zppsu.edu.ph', 'fac123');
+  const secretary = await signIn('secretary@zppsu.edu.ph', demoPassword('secretary'));
+  const head = await signIn('president@zppsu.edu.ph', demoPassword('head'));
+  const faculty = await signIn('faculty@zppsu.edu.ph', demoPassword('faculty'));
 
   // The seeded Mock Defense minutes: secretary-signed, pending, unlocked.
   const { data: target, error: findErr } = await secretary
@@ -154,7 +155,7 @@ async function main() {
 
   // -------------------------------------------------------------------------
   console.log('\n=== the amendment is in the audit trail ===');
-  const admin = await signIn('admin@zppsu.edu.ph', 'admin123');
+  const admin = await signIn('admin@zppsu.edu.ph', demoPassword('admin'));
   const { data: audit } = await admin
     .from('audit_log')
     .select('action, detail, user_name')
