@@ -62,3 +62,19 @@ export function fmtManilaDate(iso: string | Date): string {
 export function fmtManilaTime(iso: string | Date): string {
   return fmtManila(iso, { hour: 'numeric', minute: '2-digit' });
 }
+
+/** The current year and 0-indexed month on the Manila calendar. */
+export function currentManilaMonth(now: Date = new Date()): { year: number; month: number } {
+  const [y, m] = manilaDateKey(now).split('-').map(Number);
+  return { year: y, month: m - 1 };
+}
+
+/** ISO bounds [start, end) of a Manila calendar month, for range queries. */
+export function manilaMonthRange(year: number, month: number): { start: string; end: string } {
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const next = month === 11 ? { y: year + 1, m: 0 } : { y: year, m: month + 1 };
+  return {
+    start: new Date(`${year}-${pad(month + 1)}-01T00:00:00${MANILA_OFFSET}`).toISOString(),
+    end: new Date(`${next.y}-${pad(next.m + 1)}-01T00:00:00${MANILA_OFFSET}`).toISOString(),
+  };
+}

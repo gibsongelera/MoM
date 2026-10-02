@@ -207,6 +207,23 @@ export default function MeetingForm({
       if (error) warning = 'The meeting was saved, but some participants could not be removed.';
     }
 
+    // Email is best-effort on top of the in-app notifications the database
+    // raises, so it never blocks or fails the save.
+    const sendEmail = (event: 'created' | 'emergency' | 'rescheduled' | 'participants_added', userIds?: string[]) =>
+      void fetch('/api/notify/meeting', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ meetingId: id, event, userIds }),
+      }).catch(() => {});
+    if (mode === 'create' || mode === 'emergency') {
+      sendEmail(mode === 'emergency' ? 'emergency' : 'created');
+    } else {
+      if (toAdd.length) sendEmail('participants_added', toAdd);
+      const movedTime = initial?.starts_at && row.starts_at && new Date(row.starts_at as string).getTime() !== new Date(initial.starts_at).getTime();
+      const movedVenue = (normalizeName(venue) || null) !== (initial?.venue ?? null);
+      if (movedTime || movedVenue) sendEmail('rescheduled');
+    }
+
     onBusyChange?.(false);
     onSaved(id, warning);
   }
