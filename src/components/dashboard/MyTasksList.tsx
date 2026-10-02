@@ -26,11 +26,21 @@ export default function MyTasksList({ tasks }: { tasks: MyTaskRow[] }) {
   const router = useRouter();
   const supabase = createClient();
   const [pendingId, setPendingId] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   async function advance(task: MyTaskRow) {
     setPendingId(task.id);
-    await supabase.from('tasks').update({ status: NEXT_STATUS[task.status] }).eq('id', task.id);
+    setError(null);
+    const { data, error: updateError } = await supabase
+      .from('tasks')
+      .update({ status: NEXT_STATUS[task.status] })
+      .eq('id', task.id)
+      .select('id');
     setPendingId(null);
+    if (updateError || !data?.length) {
+      setError(`Couldn't update "${task.title}". ${updateError?.message ?? 'Try again in a moment.'}`);
+      return;
+    }
     router.refresh();
   }
 
@@ -39,6 +49,12 @@ export default function MyTasksList({ tasks }: { tasks: MyTaskRow[] }) {
   }
 
   return (
+    <>
+    {error ? (
+      <p role="alert" className="mb-sm rounded-lg bg-error-container p-sm font-body-sm text-on-error-container">
+        {error}
+      </p>
+    ) : null}
     <div className="bg-surface-container-lowest border border-outline-variant rounded-xl divide-y divide-outline-variant">
       {tasks.map((t) => {
         const overdue = t.deadline && t.status !== 'done' && new Date(t.deadline) < new Date();
@@ -76,5 +92,6 @@ export default function MyTasksList({ tasks }: { tasks: MyTaskRow[] }) {
         );
       })}
     </div>
+    </>
   );
 }

@@ -1,3 +1,4 @@
+import { MeetingStatusPill } from '@/components/ui/StatusPill';
 import { createClient } from '@/lib/supabase/server';
 import { requireRole } from '@/lib/auth/requireRole';
 import { Kpi } from '@/components/dashboard/Kpi';
@@ -29,11 +30,6 @@ export default async function HeadDashboardPage() {
   const activeTasks = (tasks ?? []).filter((t) => t.status !== 'done').length;
   const teamMembers = team ?? [];
 
-  function pillClassFor(status: string) {
-    if (status === 'approved') return 'pill-done';
-    if (status === 'pending_approval') return 'pill-progress';
-    return 'pill-pending';
-  }
 
   return (
     <>
@@ -129,7 +125,7 @@ export default async function HeadDashboardPage() {
                     {new Date(m.starts_at).toLocaleString('en-US', { year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
                   </td>
                   <td className="py-sm px-md">
-                    <span className={`pill ${pillClassFor(m.status)}`}>{m.status.replace('_', ' ')}</span>
+                    <MeetingStatusPill status={m.status} />
                   </td>
                 </tr>
               ))}

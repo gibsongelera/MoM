@@ -26,6 +26,7 @@ import { docTitleFor } from '@/lib/ai/doc-title';
 import type { MeetingType } from '@/lib/types/domain';
 import type { PaperNote } from '@/lib/meetings/printable';
 import { fmtManila } from '@/lib/utils/datetime';
+import { humanize } from '@/lib/ui/status';
 import { Button, buttonClasses } from '@/components/ui/Button';
 import { Dialog } from '@/components/ui/Dialog';
 import { Icon } from '@/components/ui/Icon';
@@ -643,7 +644,7 @@ export default function MomEditor({
                     <td className="py-sm px-md">{t.assignee_name ?? <em className="text-on-surface-variant">Unassigned</em>}</td>
                     <td className="py-sm px-md">{t.deadline ?? '—'}</td>
                     <td className="py-sm px-md">
-                      <span className={`pill ${t.status === 'done' ? 'pill-done' : t.status === 'in_progress' ? 'pill-progress' : 'pill-pending'}`}>{t.status.replace('_', ' ')}</span>
+                      <span className={`pill ${t.status === 'done' ? 'pill-done' : t.status === 'in_progress' ? 'pill-progress' : 'pill-pending'}`}>{humanize(t.status)}</span>
                     </td>
                   </tr>
                 ))

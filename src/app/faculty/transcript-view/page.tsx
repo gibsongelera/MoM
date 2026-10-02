@@ -71,6 +71,9 @@ export default async function FacultyTranscriptViewPage({
     .from('transcripts')
     .select('id, segments, language, meetings(title)')
     .eq('meeting_id', meetingId)
+    // A meeting can be recorded more than once; show the latest transcript.
+    .order('created_at', { ascending: false })
+    .limit(1)
     .maybeSingle();
 
   const meeting = transcript ? (Array.isArray(transcript.meetings) ? transcript.meetings[0] : transcript.meetings) : null;

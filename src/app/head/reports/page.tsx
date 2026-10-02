@@ -1,3 +1,4 @@
+import { humanize } from '@/lib/ui/status';
 import { createClient } from '@/lib/supabase/server';
 import { requireRole } from '@/lib/auth/requireRole';
 import PrintButton from '@/components/dashboard/PrintButton';
@@ -65,7 +66,7 @@ export default async function HeadReportsPage() {
               <td className="py-sm">{m.title}</td>
               <td className="py-sm capitalize">{m.meeting_type}</td>
               <td className="py-sm">{new Date(m.starts_at).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}</td>
-              <td className="py-sm">{m.status.replace('_', ' ')}</td>
+              <td className="py-sm">{humanize(m.status)}</td>
             </tr>
           ))}
         </tbody>

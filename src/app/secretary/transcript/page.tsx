@@ -56,10 +56,17 @@ export default async function SecretaryTranscriptPage({
     );
   }
 
-  const [{ data: transcript }, { data: speakerRows }] = await Promise.all([
-    supabase.from('transcripts').select('id, segments, language, meetings(title)').eq('meeting_id', meetingId).maybeSingle(),
-    supabase.from('transcript_speakers').select('transcript_id, speaker_label, display_name'),
-  ]);
+  // A meeting can be recorded more than once; edit the latest transcript.
+  const { data: transcript } = await supabase
+    .from('transcripts')
+    .select('id, segments, language, meetings(title)')
+    .eq('meeting_id', meetingId)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  const { data: speakerRows } = transcript
+    ? await supabase.from('transcript_speakers').select('transcript_id, speaker_label, display_name').eq('transcript_id', transcript.id)
+    : { data: [] as { transcript_id: string; speaker_label: string; display_name: string }[] };
 
   const meeting = transcript ? (Array.isArray(transcript.meetings) ? transcript.meetings[0] : transcript.meetings) : null;
   const segments = (transcript?.segments ?? []) as TranscriptSegment[];

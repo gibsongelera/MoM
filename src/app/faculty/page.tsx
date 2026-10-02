@@ -1,3 +1,4 @@
+import { humanize } from '@/lib/ui/status';
 import { createClient } from '@/lib/supabase/server';
 import { requireRole } from '@/lib/auth/requireRole';
 import { Kpi } from '@/components/dashboard/Kpi';
@@ -79,7 +80,7 @@ export default async function FacultyDashboardPage() {
                         <div className="flex gap-sm mt-xs">
                           {t.ai_extracted ? <span className="pill pill-ai">AI Extracted</span> : null}
                           <span className={`pill ${t.status === 'in_progress' ? 'pill-progress' : 'pill-pending'}`}>
-                            {t.status.replace('_', ' ')}
+                            {humanize(t.status)}
                           </span>
                           {t.deadline ? (
                             <span className={`font-caption text-caption ${overdue ? 'text-error font-semibold' : 'text-on-surface-variant'}`}>

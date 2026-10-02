@@ -1,3 +1,4 @@
+import { MeetingStatusPill } from '@/components/ui/StatusPill';
 import { createClient } from '@/lib/supabase/server';
 
 export default async function AdminMeetingsPage() {
@@ -12,12 +13,6 @@ export default async function AdminMeetingsPage() {
   ]);
   const deptShort = new Map((departments ?? []).map((d) => [d.id, d.short]));
 
-  function pillClassFor(status: string) {
-    if (status === 'approved') return 'pill-done';
-    if (status === 'pending_approval') return 'pill-progress';
-    if (status === 'archived') return 'pill-overdue';
-    return 'pill-pending';
-  }
 
   function typePillClassFor(type: string) {
     if (type === 'capstone') return 'pill-capstone';
@@ -62,7 +57,7 @@ export default async function AdminMeetingsPage() {
                     {new Date(m.starts_at).toLocaleString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}
                   </td>
                   <td className="py-sm px-md">
-                    <span className={`pill ${pillClassFor(m.status)}`}>{m.status.replace('_', ' ')}</span>
+                    <MeetingStatusPill status={m.status} />
                   </td>
                 </tr>
               ))

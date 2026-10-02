@@ -71,8 +71,15 @@ export default function PersonalMeetingsManager({ initial }: { initial: Personal
   }
 
   async function handleDelete(id: string) {
-    await supabase.from('personal_meetings').delete().eq('id', id);
-    setRows((r) => r.filter((row) => row.id !== id));
+    const row = rows.find((r) => r.id === id);
+    if (!window.confirm(`Delete "${row?.title ?? 'this entry'}" from your log? This can't be undone.`)) return;
+    setError(null);
+    const { data, error: deleteError } = await supabase.from('personal_meetings').delete().eq('id', id).select('id');
+    if (deleteError || !data?.length) {
+      setError(`Couldn't delete the entry. ${deleteError?.message ?? 'Try again in a moment.'}`);
+      return;
+    }
+    setRows((r) => r.filter((x) => x.id !== id));
     router.refresh();
   }
 

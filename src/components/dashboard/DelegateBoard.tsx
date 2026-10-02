@@ -57,8 +57,13 @@ export default function DelegateBoard({
     const next = COLUMNS[idx + direction];
     if (!next) return;
     setPendingId(task.id);
-    await supabase.from('tasks').update({ status: next.status }).eq('id', task.id);
+    setError(null);
+    const { data, error: moveError } = await supabase.from('tasks').update({ status: next.status }).eq('id', task.id).select('id');
     setPendingId(null);
+    if (moveError || !data?.length) {
+      setError(`Couldn't move "${task.title}". ${moveError?.message ?? 'You may not have permission to change this task.'}`);
+      return;
+    }
     router.refresh();
   }
 
