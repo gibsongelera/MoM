@@ -17,6 +17,7 @@ import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import pg from 'pg';
+import { viaPoolerIfConfigured } from './lib/pg-connection.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const MIGRATIONS_DIR = join(HERE, '..', 'supabase', 'migrations');
@@ -140,9 +141,13 @@ reaches this script.`,
 }
 
 checkHasHost(rawUrl);
-const connectionString = normalizeConnectionString(rawUrl);
-if (connectionString !== rawUrl) {
+const normalized = normalizeConnectionString(rawUrl);
+if (normalized !== rawUrl) {
   console.log('note: percent-encoded special characters in the database password');
+}
+const connectionString = viaPoolerIfConfigured(normalized);
+if (connectionString !== normalized) {
+  console.log(`note: connecting through the session pooler (${process.env.SUPABASE_POOLER_HOST})`);
 }
 
 // Fail with something actionable rather than pg's bare "Invalid URL".

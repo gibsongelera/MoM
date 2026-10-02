@@ -13,7 +13,10 @@
     "db:seed": "node --env-file=.env.local scripts/seed-demo.mjs",
     "db:seed-users-only": "node --env-file=.env.local scripts/seed-users-only.mjs",
     "db:reset": "node --env-file=.env.local scripts/seed-demo.mjs --reset",
-    "db:verify": "node --env-file=.env.local scripts/verify-rls.mjs && node --env-file=.env.local scripts/verify-amend.mjs && node --env-file=.env.local scripts/seed-demo.mjs"
+    "db:verify": "node --env-file=.env.local scripts/verify-rls-sql.mjs",
+    "db:verify:pending": "node --env-file=.env.local scripts/verify-rls-sql.mjs --with-pending",
+    "db:verify:live": "node --env-file=.env.local scripts/verify-rls.mjs && node --env-file=.env.local scripts/verify-amend.mjs",
+    "db:backup": "node --env-file=.env.local scripts/db-backup.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.115.0",

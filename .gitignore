@@ -34,3 +34,6 @@ yarn-error.log*
 # python caches (from .cursor skills)
 __pycache__/
 *.pyc
+
+# Local database backups (contain personal data)
+/backups/
