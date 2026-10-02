@@ -1,6 +1,11 @@
+import Link from 'next/link';
 import { createClient } from '@/lib/supabase/server';
 import { requireRole } from '@/lib/auth/requireRole';
 import { Kpi } from '@/components/dashboard/Kpi';
+import { MeetingStatusPill } from '@/components/ui/StatusPill';
+import { Icon } from '@/components/ui/Icon';
+import { buttonClasses } from '@/components/ui/Button';
+import { fmtManila } from '@/lib/utils/datetime';
 
 /**
  * Port of secretary/dashboard.html.
@@ -31,12 +36,6 @@ export default async function SecretaryDashboardPage() {
   const momsInDraft = meetingRows.filter((m) => m.status === 'transcribed').length;
   const awaitingApproval = meetingRows.filter((m) => m.status === 'pending_approval').length;
 
-  function pillClassFor(status: string) {
-    if (status === 'approved') return 'pill-done';
-    if (status === 'pending_approval') return 'pill-progress';
-    return 'pill-pending';
-  }
-
   return (
     <>
       <header className="flex flex-col md:flex-row md:items-end justify-between gap-md mb-lg">
@@ -45,63 +44,59 @@ export default async function SecretaryDashboardPage() {
           <p className="font-body-md text-on-surface-variant">{department ? `${department.name} (${department.short})` : '—'}</p>
         </div>
         <div className="flex gap-sm flex-wrap">
-          <a href="/secretary/upload-audio" className="border border-outline-variant px-md py-sm rounded-lg hover:bg-surface-container flex items-center gap-xs">
-            <span className="material-symbols-outlined text-[18px]">upload_file</span> Upload Audio
-          </a>
-          <a href="/secretary/live-recording" className="bg-primary text-on-primary px-md py-sm rounded-lg shadow-primary-md flex items-center gap-xs">
-            <span className="material-symbols-outlined text-[18px]">mic</span> Start Live Recording
-          </a>
+          <Link href="/secretary/meetings?emergency=1" className={buttonClasses('secondary')}>
+            <Icon name="emergency" size={18} /> Start emergency meeting
+          </Link>
+          <Link href="/secretary/meetings" className={buttonClasses('primary')}>
+            <Icon name="event" size={18} /> Meetings
+          </Link>
         </div>
       </header>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-md mb-lg">
         <Kpi label="My Meetings" value={meetingRows.length} icon="event" tone="primary" />
         <Kpi label="Pending Transcript" value={pendingTranscript} icon="closed_caption" tone="tertiary" />
-        <Kpi label="MoMs in Draft" value={momsInDraft} icon="description" tone="primary" />
+        <Kpi label="Minutes to write" value={momsInDraft} icon="description" tone="primary" />
         <Kpi label="Awaiting Approval" value={awaitingApproval} icon="pending_actions" tone="tertiary" />
       </div>
 
       <section className="bg-surface-container-lowest border border-outline-variant rounded-xl p-md">
-        <h3 className="font-h3 text-h3 mb-md">My Workflow</h3>
+        <h2 className="font-h3 text-h3 mb-md">My workflow</h2>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-md">
-          <a href="/secretary/schedule" className="bg-surface-container-low rounded-lg p-md hover:shadow-primary-md transition-all border border-outline-variant">
-            <span className="material-symbols-outlined text-primary text-[28px]">event</span>
-            <p className="font-body-md font-semibold mt-sm">Schedule</p>
-            <p className="font-caption text-caption text-on-surface-variant mt-xs">Create &amp; manage meetings</p>
-          </a>
-          <a href="/secretary/live-recording" className="bg-surface-container-low rounded-lg p-md hover:shadow-primary-md transition-all border border-outline-variant">
-            <span className="material-symbols-outlined text-primary text-[28px]">mic</span>
-            <p className="font-body-md font-semibold mt-sm">Record</p>
-            <p className="font-caption text-caption text-on-surface-variant mt-xs">Live or upload capture</p>
-          </a>
-          <a href="/secretary/transcript" className="bg-surface-container-low rounded-lg p-md hover:shadow-primary-md transition-all border border-outline-variant">
-            <span className="material-symbols-outlined text-tertiary-container text-[28px]">closed_caption</span>
-            <p className="font-body-md font-semibold mt-sm">Transcripts</p>
-            <p className="font-caption text-caption text-on-surface-variant mt-xs">Edit speakers &amp; segments</p>
-          </a>
-          <a href="/secretary/mom-editor" className="bg-surface-container-low rounded-lg p-md hover:shadow-primary-md transition-all border border-outline-variant">
-            <span className="material-symbols-outlined text-primary text-[28px]">description</span>
-            <p className="font-body-md font-semibold mt-sm">CHED MoM</p>
-            <p className="font-caption text-caption text-on-surface-variant mt-xs">Format minutes</p>
-          </a>
+          {[
+            { href: '/secretary/meetings', icon: 'event', label: 'Meetings', hint: 'Schedule or start one now' },
+            { href: '/secretary/live-recording', icon: 'mic', label: 'Record', hint: 'Record or upload audio' },
+            { href: '/secretary/transcript', icon: 'closed_caption', label: 'Transcripts', hint: 'Fix speakers and text' },
+            { href: '/secretary/mom-editor', icon: 'description', label: 'Minutes', hint: 'Write, sign and route' },
+          ].map((t) => (
+            <Link
+              key={t.href}
+              href={t.href}
+              className="bg-surface-container-low rounded-lg p-md border border-outline-variant transition-shadow duration-150 hover:shadow-primary-md"
+            >
+              <Icon name={t.icon} size={28} className="text-primary" />
+              <p className="font-body-md font-semibold mt-sm">{t.label}</p>
+              <p className="font-caption text-caption text-on-surface-variant mt-xs">{t.hint}</p>
+            </Link>
+          ))}
         </div>
       </section>
 
       <section className="bg-surface-container-lowest border border-outline-variant rounded-xl overflow-hidden mt-md">
         <div className="p-md border-b border-outline-variant flex items-center justify-between">
-          <h3 className="font-h3 text-h3">Recent Department Meetings</h3>
-          <a href="/secretary/archives" className="text-primary hover:underline font-label-caps text-label-caps">
-            VIEW ARCHIVES
-          </a>
+          <h2 className="font-h3 text-h3">Recent department meetings</h2>
+          <Link href="/secretary/archives" className={buttonClasses('ghost', 'sm')}>
+            Meeting History <Icon name="arrow_forward" size={18} />
+          </Link>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-left text-body-sm">
             <thead className="bg-surface-container-low border-b border-outline-variant">
               <tr>
-                <th className="py-sm px-md font-label-caps text-label-caps text-on-surface-variant">Meeting</th>
-                <th className="py-sm px-md font-label-caps text-label-caps text-on-surface-variant">Date</th>
-                <th className="py-sm px-md font-label-caps text-label-caps text-on-surface-variant">Status</th>
-                <th className="py-sm px-md font-label-caps text-label-caps text-on-surface-variant text-right">Actions</th>
+                <th scope="col" className="py-sm px-md font-label-caps text-label-caps text-on-surface-variant">Meeting</th>
+                <th scope="col" className="py-sm px-md font-label-caps text-label-caps text-on-surface-variant">Date</th>
+                <th scope="col" className="py-sm px-md font-label-caps text-label-caps text-on-surface-variant">Status</th>
+                <th scope="col" className="py-sm px-md font-label-caps text-label-caps text-on-surface-variant text-right">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -109,18 +104,15 @@ export default async function SecretaryDashboardPage() {
                 <tr key={m.id} className="border-b border-outline-variant hover:bg-surface-container-low">
                   <td className="py-sm px-md font-semibold">{m.title}</td>
                   <td className="py-sm px-md text-on-surface-variant">
-                    {new Date(m.starts_at).toLocaleString('en-US', { year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
+                    {fmtManila(m.starts_at)}
                   </td>
                   <td className="py-sm px-md">
-                    <span className={`pill ${pillClassFor(m.status)}`}>{m.status.replace('_', ' ')}</span>
+                    <MeetingStatusPill status={m.status} />
                   </td>
                   <td className="py-sm px-md text-right">
-                    <a href={`/secretary/transcript?m=${m.id}`} className="text-primary hover:underline font-semibold mr-md">
-                      Transcript
-                    </a>
-                    <a href={`/secretary/mom-editor?m=${m.id}`} className="text-primary hover:underline font-semibold">
-                      MoM
-                    </a>
+                    <Link href={`/secretary/meetings/${m.id}`} className="text-primary hover:underline font-semibold">
+                      Open
+                    </Link>
                   </td>
                 </tr>
               ))}

@@ -30,6 +30,7 @@ export interface FieldControlProps {
  *   </Field>
  */
 export function Field({
+  id: fixedId,
   label,
   hint,
   error,
@@ -37,6 +38,8 @@ export function Field({
   className,
   children,
 }: {
+  /** Stable control id (e.g. to focus the first invalid field); generated otherwise. */
+  id?: string;
   label: ReactNode;
   hint?: ReactNode;
   error?: ReactNode;
@@ -44,7 +47,8 @@ export function Field({
   className?: string;
   children: (props: FieldControlProps) => ReactNode;
 }) {
-  const id = useId();
+  const autoId = useId();
+  const id = fixedId ?? autoId;
   const hintId = hint ? `${id}-hint` : undefined;
   const errorId = error ? `${id}-error` : undefined;
   const describedBy = [hintId, errorId].filter(Boolean).join(' ') || undefined;

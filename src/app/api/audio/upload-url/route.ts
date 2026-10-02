@@ -15,26 +15,16 @@
  */
 import { NextResponse } from 'next/server';
 import * as z from 'zod';
+import { ALLOWED_AUDIO_TYPES, extensionFor } from '@/lib/meetings/files';
 import { createClient } from '@/lib/supabase/server';
 import { requireSession } from '@/lib/ai/guard';
 
 export const runtime = 'nodejs';
 export const maxDuration = 15;
 
-// Covers what browsers actually report for common audio files: Chrome/Firefox
-// say audio/x-wav or audio/wav for .wav, audio/x-m4a or audio/mp4 for .m4a.
-// ElevenLabs accepts all of these formats downstream.
-const ALLOWED_MIME_TYPES = [
-  'audio/webm',
-  'audio/ogg',
-  'audio/mpeg',
-  'audio/mp4',
-  'audio/wav',
-  'audio/x-wav',
-  'audio/x-m4a',
-  'audio/aac',
-  'audio/flac',
-] as const;
+// Shared with the browser-side check (src/lib/meetings/files.ts) and kept in
+// sync with the meeting-audio bucket's allowed types (0017).
+const ALLOWED_MIME_TYPES = ALLOWED_AUDIO_TYPES;
 
 const bodySchema = z.object({
   meetingId: z.string().uuid(),
@@ -42,12 +32,6 @@ const bodySchema = z.object({
   language: z.string().default('en-US'),
 });
 
-function extensionFor(mimeType: string): string {
-  const sub = mimeType.split('/')[1] ?? 'webm';
-  if (sub === 'x-m4a') return 'm4a';
-  if (sub === 'x-wav') return 'wav';
-  return sub;
-}
 
 export async function POST(request: Request) {
   const session = await requireSession();

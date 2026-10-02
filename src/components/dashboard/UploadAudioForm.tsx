@@ -1,17 +1,22 @@
 'use client';
 
 /**
- * Exercises the full Phase 1-5 pipeline built earlier: signed direct upload
- * to Storage (POST /api/audio/upload-url), then POST /api/transcribe to
- * submit to ElevenLabs. The webhook (POST /api/webhooks/elevenlabs) does the
- * rest server-side - this page just submits and then polls
- * transcription_jobs for status, since there's no realtime subscription set
- * up yet and polling is simpler to reason about for a first pass.
+ * Upload a recording made elsewhere (client: "if there's no internet, record
+ * first and add it later"). Upload is optional and happens from the meeting.
+ *
+ * Signed direct upload to Storage, then /api/transcribe; transcription runs in
+ * the background and the secretary goes straight to the meeting's attendance.
  */
-import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { useId, useMemo, useState, type FormEvent } from 'react';
+import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { uploadAndTranscribe } from '@/lib/utils/uploadAndTranscribe';
-import type { TranscriptionStatus } from '@/lib/types/domain';
+import { audioFileProblem } from '@/lib/meetings/files';
+import { fmtManilaDate } from '@/lib/utils/datetime';
+import { useOnline } from '@/lib/hooks/useOnline';
+import { Button } from '@/components/ui/Button';
+import { Field, inputClass } from '@/components/ui/Field';
+import { useToast } from '@/components/ui/Toast';
 
 export interface MeetingOption {
   id: string;
@@ -19,140 +24,119 @@ export interface MeetingOption {
   starts_at: string;
 }
 
-const POLL_INTERVAL_MS = 4000;
+type Language = 'auto' | 'eng' | 'fil' | 'ceb';
 
-const STATUS_LABEL: Record<TranscriptionStatus, string> = {
-  queued: 'Queued',
-  uploading: 'Uploading',
-  processing: 'Processing with ElevenLabs',
-  completed: 'Completed',
-  failed: 'Failed',
-  cancelled: 'Cancelled',
-};
-
-export default function UploadAudioForm({ meetings }: { meetings: MeetingOption[] }) {
-  const supabase = createClient();
-  const [meetingId, setMeetingId] = useState(meetings[0]?.id ?? '');
-  const [language, setLanguage] = useState<'auto' | 'eng' | 'fil' | 'ceb'>('auto');
+export default function UploadAudioForm({
+  meetings = [],
+  fixedMeetingId,
+}: {
+  meetings?: MeetingOption[];
+  /** When set (inside a meeting's page), the meeting picker is hidden. */
+  fixedMeetingId?: string;
+}) {
+  const supabase = useMemo(() => createClient(), []);
+  const router = useRouter();
+  const toast = useToast();
+  const online = useOnline();
+  const fileHintId = useId();
+  const [meetingId, setMeetingId] = useState(fixedMeetingId ?? meetings[0]?.id ?? '');
+  const [language, setLanguage] = useState<Language>('auto');
   const [file, setFile] = useState<File | null>(null);
-  const [stage, setStage] = useState<'idle' | 'uploading' | 'submitting' | 'polling' | 'done' | 'error'>('idle');
-  const [error, setError] = useState<string | null>(null);
-  const [jobId, setJobId] = useState<string | null>(null);
-  const [jobStatus, setJobStatus] = useState<TranscriptionStatus | null>(null);
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
-  useEffect(() => {
-    return () => {
-      if (pollRef.current) clearInterval(pollRef.current);
-    };
-  }, []);
-
-  function startPolling(id: string) {
-    if (pollRef.current) clearInterval(pollRef.current);
-    pollRef.current = setInterval(async () => {
-      const { data } = await supabase.from('transcription_jobs').select('status, error_detail').eq('id', id).single();
-      if (!data) return;
-      setJobStatus(data.status);
-      if (data.status === 'completed' || data.status === 'failed' || data.status === 'cancelled') {
-        if (pollRef.current) clearInterval(pollRef.current);
-        setStage(data.status === 'completed' ? 'done' : 'error');
-        if (data.status === 'failed') setError(data.error_detail ?? 'Transcription failed.');
-      }
-    }, POLL_INTERVAL_MS);
-  }
+  const [problem, setProblem] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
-    if (!meetingId || !file) {
-      setError('Choose a meeting and an audio file.');
+    if (!meetingId) {
+      setProblem('Choose the meeting this recording belongs to.');
       return;
     }
-    setError(null);
-    setStage('uploading');
-
+    if (!file) {
+      setProblem('Choose an audio file to upload.');
+      return;
+    }
+    const issue = audioFileProblem(file);
+    if (issue) {
+      setProblem(issue);
+      return;
+    }
+    setProblem(null);
+    setBusy(true);
     try {
-      setStage('submitting');
-      const { jobId: newJobId } = await uploadAndTranscribe(supabase, {
-        meetingId,
-        file,
-        mimeType: file.type || 'audio/mpeg',
-        language,
-      });
-
-      setJobId(newJobId);
-      setJobStatus('processing');
-      setStage('polling');
-      startPolling(newJobId);
+      await uploadAndTranscribe(supabase, { meetingId, file, mimeType: file.type || 'audio/mpeg', language });
+      toast.success('Recording uploaded. Transcription continues in the background — take attendance while you wait.');
+      router.push(`/secretary/meetings/${meetingId}?step=attendance`);
     } catch (err) {
-      setStage('error');
-      setError(err instanceof Error ? err.message : 'Upload failed.');
+      setBusy(false);
+      setProblem(`The upload didn't finish. ${err instanceof Error ? err.message : ''} Your file is still selected — try again.`);
     }
   }
 
   return (
-    <form onSubmit={handleSubmit} className="bg-surface-container-lowest border border-outline-variant rounded-xl p-lg space-y-md max-w-2xl">
-      <div>
-        <label className="font-label-caps text-label-caps text-on-surface-variant">Meeting</label>
-        <select value={meetingId} onChange={(e) => setMeetingId(e.target.value)} className="w-full rounded-lg border-outline-variant bg-surface-container mt-xs font-body-sm">
-          {meetings.length === 0 ? <option value="">No meetings yet - schedule one first</option> : null}
-          {meetings.map((m) => (
-            <option key={m.id} value={m.id}>
-              {m.title} · {new Date(m.starts_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-            </option>
-          ))}
-        </select>
-      </div>
+    <form onSubmit={handleSubmit} noValidate className="flex max-w-2xl flex-col gap-md rounded-xl border border-outline-variant bg-surface-container-lowest p-lg">
+      {fixedMeetingId ? null : (
+        <Field label="Meeting" required>
+          {(p) => (
+            <select {...p} className={inputClass} value={meetingId} onChange={(e) => setMeetingId(e.target.value)}>
+              {meetings.length === 0 ? <option value="">No meetings yet — schedule one first</option> : null}
+              {meetings.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.title} · {fmtManilaDate(m.starts_at)}
+                </option>
+              ))}
+            </select>
+          )}
+        </Field>
+      )}
 
-      <div>
-        <label className="font-label-caps text-label-caps text-on-surface-variant">Spoken language (auto-detect handles code-switching)</label>
-        <select value={language} onChange={(e) => setLanguage(e.target.value as typeof language)} className="w-full rounded-lg border-outline-variant bg-surface-container mt-xs font-body-sm">
-          <option value="auto">Auto-detect</option>
-          <option value="eng">English</option>
-          <option value="fil">Filipino</option>
-          <option value="ceb">Cebuano</option>
-        </select>
-      </div>
+      <Field label="Spoken language" hint="Auto-detect handles meetings that switch between English and Filipino.">
+        {(p) => (
+          <select {...p} className={inputClass} value={language} onChange={(e) => setLanguage(e.target.value as Language)}>
+            <option value="auto">Auto-detect</option>
+            <option value="eng">English</option>
+            <option value="fil">Filipino</option>
+            <option value="ceb">Cebuano</option>
+          </select>
+        )}
+      </Field>
 
-      <div>
-        <label className="font-label-caps text-label-caps text-on-surface-variant">Audio file</label>
+      <div className="flex flex-col gap-xs">
+        <label htmlFor={`${fileHintId}-file`} className="font-label-caps text-label-caps uppercase text-on-surface-variant">
+          Audio file
+        </label>
         <input
+          id={`${fileHintId}-file`}
           type="file"
           accept="audio/*"
-          onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-          className="w-full rounded-lg border-outline-variant bg-surface-container mt-xs font-body-sm"
+          aria-describedby={fileHintId}
+          onChange={(e) => {
+            setFile(e.target.files?.[0] ?? null);
+            setProblem(null);
+          }}
+          className="block w-full font-body-sm file:mr-sm file:min-h-8 file:rounded-lg file:border file:border-outline file:bg-surface-container-lowest file:px-sm file:font-semibold file:text-on-surface"
         />
+        <p id={fileHintId} className="font-caption text-caption text-on-surface-variant">
+          MP3, M4A, WAV, OGG or WEBM, up to 500 MB.
+        </p>
       </div>
 
-      {error ? <div className="text-error bg-error-container rounded-lg p-sm font-body-sm">{error}</div> : null}
-
-      {stage === 'polling' || stage === 'done' ? (
-        <div className="bg-tertiary-fixed/30 border border-tertiary-container/40 rounded-lg p-sm flex items-center gap-sm">
-          <span className="material-symbols-outlined text-tertiary-container">{stage === 'done' ? 'check_circle' : 'auto_awesome'}</span>
-          <div>
-            <p className="font-body-sm font-semibold">{jobStatus ? STATUS_LABEL[jobStatus] : 'Submitted'}</p>
-            {jobId ? <p className="font-caption text-caption text-on-surface-variant">Job {jobId}</p> : null}
-            {stage === 'done' ? (
-              <p className="font-caption text-caption text-on-surface-variant">
-                Transcript, and if Claude drafted them, minutes and action items, are ready.
-              </p>
-            ) : null}
-          </div>
-        </div>
+      {problem ? (
+        <p role="alert" className="rounded-lg bg-error-container p-sm font-body-sm text-on-error-container">
+          {problem}
+        </p>
+      ) : null}
+      {!online ? (
+        <p className="rounded-lg bg-tertiary-fixed/40 p-sm font-body-sm text-on-tertiary-fixed-variant">
+          You&apos;re offline. Uploading and transcription need an internet connection — keep the file and upload it when you&apos;re back
+          online.
+        </p>
       ) : null}
 
-      <button
-        type="submit"
-        disabled={stage === 'uploading' || stage === 'submitting' || stage === 'polling' || !meetingId}
-        className="bg-primary text-on-primary px-lg py-sm rounded-lg shadow-primary-md font-semibold disabled:opacity-60"
-      >
-        {stage === 'uploading'
-          ? 'Uploading...'
-          : stage === 'submitting'
-            ? 'Submitting to ElevenLabs...'
-            : stage === 'polling'
-              ? 'Transcribing...'
-              : 'Upload & Transcribe'}
-      </button>
+      <div>
+        <Button type="submit" icon="upload" loading={busy} disabled={!online || !meetingId}>
+          {busy ? 'Uploading…' : 'Upload and transcribe'}
+        </Button>
+      </div>
     </form>
   );
 }

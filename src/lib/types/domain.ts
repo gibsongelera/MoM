@@ -79,8 +79,40 @@ export interface Meeting {
   chairperson_id: string | null;
   panel_member_ids: string[];
   adviser_id: string | null;
+  /** 0016: unscheduled ("biglaan") meeting started on the spot. */
+  is_emergency: boolean;
+  /** 0016: participants without an account, typed by name. */
+  guests: MeetingGuest[];
+  /** 0016: typed capstone chairperson (chairperson_id is the optional linked account). */
+  chairperson_name: string | null;
+  /** 0016: typed panel; panel_member_ids is synced from the linked userIds. */
+  panel_members: PanelMember[];
+  adviser_name: string | null;
   created_at: string;
   updated_at: string;
+}
+
+/** Someone at the meeting who has no SmartMin account. */
+export interface MeetingGuest {
+  id: string;
+  name: string;
+  affiliation?: string | null;
+}
+
+/** A panel member: a typed name, optionally linked to an account. */
+export interface PanelMember {
+  name: string;
+  userId?: string | null;
+  affiliation?: string | null;
+}
+
+/** A directory entry offered as a suggestion in people pickers. */
+export interface PersonOption {
+  id: string;
+  name: string;
+  position?: string | null;
+  role?: UserRole;
+  department_short?: string | null;
 }
 
 /** One line of dialogue. `t` is seconds from the start of the recording. */

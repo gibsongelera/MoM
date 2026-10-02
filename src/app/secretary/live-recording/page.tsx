@@ -1,5 +1,8 @@
+import type { Metadata } from 'next';
 import { createClient } from '@/lib/supabase/server';
 import LiveRecordingForm from '@/components/dashboard/LiveRecordingForm';
+
+export const metadata: Metadata = { title: 'Live Recording | ZPPSU SmartMin' };
 
 export default async function SecretaryLiveRecordingPage({ searchParams }: { searchParams: Promise<{ m?: string }> }) {
   const { m: preselect } = await searchParams;
@@ -10,19 +13,16 @@ export default async function SecretaryLiveRecordingPage({ searchParams }: { sea
     .order('starts_at', { ascending: false })
     .limit(50);
 
-  const ordered = preselect
-    ? [...(meetings ?? [])].sort((a, b) => (a.id === preselect ? -1 : b.id === preselect ? 1 : 0))
-    : (meetings ?? []);
-
   return (
     <>
       <header className="mb-lg">
         <h1 className="font-h1 text-h1">Live Recording</h1>
         <p className="font-body-lg text-on-surface-variant">
-          Record directly from your microphone. On stop, the recording uploads and is transcribed automatically.
+          Record from this device&apos;s microphone. When you stop, the recording uploads and is transcribed in the background,
+          and you go straight to attendance.
         </p>
       </header>
-      <LiveRecordingForm meetings={ordered} />
+      <LiveRecordingForm meetings={meetings ?? []} preselectId={preselect} />
     </>
   );
 }
