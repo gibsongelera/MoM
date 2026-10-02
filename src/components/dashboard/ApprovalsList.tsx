@@ -3,6 +3,10 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
+import { fmtManilaDate } from '@/lib/utils/datetime';
+import { Button, buttonClasses } from '@/components/ui/Button';
+import { Icon } from '@/components/ui/Icon';
+import { EmptyState } from '@/components/ui/EmptyState';
 import SignaturePad from './SignaturePad';
 
 export interface PendingApproval {
@@ -13,17 +17,19 @@ export interface PendingApproval {
   documentTitle: string | null;
 }
 
-export default function ApprovalsList({ pending }: { pending: PendingApproval[] }) {
+export default function ApprovalsList({ pending, initialOpenId }: { pending: PendingApproval[]; initialOpenId?: string }) {
   const router = useRouter();
   const supabase = createClient();
-  const [openId, setOpenId] = useState<string | null>(null);
+  const [openId, setOpenId] = useState<string | null>(
+    initialOpenId && pending.some((p) => p.meetingId === initialOpenId) ? initialOpenId : null,
+  );
   const [signature, setSignature] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   async function approve(item: PendingApproval) {
     if (!signature) {
-      setError('Sign above before approving.');
+      setError('Sign in the box (or type your name) before approving.');
       return;
     }
     setSaving(true);
@@ -45,7 +51,11 @@ export default function ApprovalsList({ pending }: { pending: PendingApproval[] 
   }
 
   if (pending.length === 0) {
-    return <div className="p-md text-on-surface-variant text-center bg-surface-container-lowest border border-outline-variant rounded-xl">No documents awaiting your signature.</div>;
+    return (
+      <EmptyState icon="task_alt" title="Nothing to approve">
+        Minutes that secretaries route to you for approval appear here.
+      </EmptyState>
+    );
   }
 
   return (
@@ -55,38 +65,47 @@ export default function ApprovalsList({ pending }: { pending: PendingApproval[] 
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-md">
               <div className="w-10 h-10 rounded-lg bg-primary/10 text-primary flex items-center justify-center">
-                <span className="material-symbols-outlined">description</span>
+                <Icon name="description" size={24} />
               </div>
               <div>
                 <p className="font-body-md font-semibold">{item.documentTitle || item.title}</p>
                 <p className="font-caption text-caption text-on-surface-variant">
-                  {new Date(item.startsAt).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })} · MoM ready for approval
+                  {fmtManilaDate(item.startsAt)} · Minutes ready for approval
                 </p>
               </div>
             </div>
-            <button
+            <Button
+              size="sm"
+              icon={openId === item.meetingId ? 'expand_less' : 'draw'}
+              aria-expanded={openId === item.meetingId}
+              aria-controls={`approve-${item.meetingId}`}
               onClick={() => {
                 setOpenId(openId === item.meetingId ? null : item.meetingId);
                 setError(null);
               }}
-              className="bg-primary text-on-primary px-md py-xs rounded-lg shadow-primary-md flex items-center gap-xs font-semibold text-body-sm"
             >
-              <span className="material-symbols-outlined text-[16px]">draw</span> {openId === item.meetingId ? 'Close' : 'Review'}
-            </button>
+              {openId === item.meetingId ? 'Close' : 'Review and sign'}
+            </Button>
           </div>
 
           {openId === item.meetingId ? (
-            <div className="mt-md pt-md border-t border-outline-variant">
-              <SignaturePad onChange={setSignature} />
-              {error ? <p className="text-error font-body-sm mt-sm">{error}</p> : null}
-              <div className="flex justify-end mt-sm">
-                <button
-                  onClick={() => approve(item)}
-                  disabled={saving}
-                  className="bg-primary text-on-primary px-lg py-sm rounded-lg shadow-primary-md font-semibold disabled:opacity-60"
-                >
-                  {saving ? 'Approving...' : 'Approve & Sign'}
-                </button>
+            <div id={`approve-${item.meetingId}`} className="mt-md pt-md border-t border-outline-variant flex flex-col gap-sm">
+              <p className="font-body-sm text-on-surface-variant">
+                Read the full minutes first — attendance, discussion, action items and attachments.
+              </p>
+              <a href={`/print/meetings/${item.meetingId}`} target="_blank" rel="noreferrer" className={buttonClasses('secondary', 'md', 'self-start')}>
+                <Icon name="visibility" size={18} /> Read the minutes
+              </a>
+              <SignaturePad onChange={setSignature} label="Your signature" />
+              {error ? (
+                <p role="alert" className="text-error font-body-sm">
+                  {error}
+                </p>
+              ) : null}
+              <div className="flex justify-end">
+                <Button icon="verified" onClick={() => approve(item)} loading={saving}>
+                  Approve and sign
+                </Button>
               </div>
             </div>
           ) : null}

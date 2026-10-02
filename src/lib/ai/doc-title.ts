@@ -7,6 +7,7 @@
  * these two functions have to agree exactly with what the UI previews.
  */
 import type { Meeting } from '@/lib/types/domain';
+import { manilaDateKey } from '@/lib/utils/datetime';
 
 type TitleSource = Pick<Meeting, 'title' | 'meeting_type' | 'sub_type' | 'project_title'> & {
   starts_at?: string;
@@ -44,7 +45,8 @@ export function docTitleFor(meeting: TitleSource | null | undefined): string {
 export function fileNameFor(meeting: TitleSource | null | undefined): string {
   if (!meeting) return 'Meeting_Minutes';
 
-  const datePart = (meeting.starts_at ?? '').slice(0, 10);
+  // Manila calendar day: a 7:30 AM meeting is still 'yesterday' in UTC.
+  const datePart = meeting.starts_at ? manilaDateKey(meeting.starts_at) : '';
 
   if (meeting.meeting_type === 'capstone' || meeting.meeting_type === 'research') {
     const fallback = meeting.meeting_type === 'capstone' ? 'Capstone' : 'Research';

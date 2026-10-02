@@ -1,7 +1,11 @@
+import type { Metadata } from 'next';
 import { createClient } from '@/lib/supabase/server';
 import ApprovalsList, { type PendingApproval } from '@/components/dashboard/ApprovalsList';
 
-export default async function HeadApprovalsPage() {
+export const metadata: Metadata = { title: 'Approvals | ZPPSU SmartMin' };
+
+export default async function HeadApprovalsPage({ searchParams }: { searchParams: Promise<{ m?: string }> }) {
+  const { m: focusMeetingId } = await searchParams;
   const supabase = await createClient();
   const { data: meetings } = await supabase
     .from('meetings')
@@ -28,11 +32,11 @@ export default async function HeadApprovalsPage() {
       <header className="mb-lg">
         <h1 className="font-h1 text-h1">Approvals &amp; Signing</h1>
         <p className="font-body-lg text-on-surface-variant">
-          Signing calls the same sign_minutes() / lock_minutes() database functions the rest of the system uses -
-          approving here locks the document and clears it from this list.
+          Read each set of minutes, then sign to approve. Approval locks the minutes; any later change needs your
+          signature again.
         </p>
       </header>
-      <ApprovalsList pending={pending} />
+      <ApprovalsList pending={pending} initialOpenId={focusMeetingId} />
     </>
   );
 }

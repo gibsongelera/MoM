@@ -19,10 +19,17 @@
  * that column was added.
  */
 import { useState, type FormEvent } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { docTitleFor } from '@/lib/ai/doc-title';
 import type { MeetingType } from '@/lib/types/domain';
+import type { PaperNote } from '@/lib/meetings/printable';
+import { fmtManila } from '@/lib/utils/datetime';
+import { Button, buttonClasses } from '@/components/ui/Button';
+import { Dialog } from '@/components/ui/Dialog';
+import { Icon } from '@/components/ui/Icon';
+import { useToast } from '@/components/ui/Toast';
 import SignaturePad from './SignaturePad';
 
 export interface MeetingDetail {
@@ -34,6 +41,8 @@ export interface MeetingDetail {
   sub_type: string | null;
   project_title: string | null;
   departmentName: string | null;
+  /** Converted tasks need it, or the head never sees them (tasks RLS is by department). */
+  departmentId: string | null;
   chairId: string | null;
   chairName: string | null;
   secretaryId: string | null;
@@ -86,6 +95,15 @@ export interface MinutesDetail {
   amendments: Amendment[];
   status: string;
   locked_at: string | null;
+  paper_notes: PaperNote[];
+}
+
+/** A photographed page of handwritten panel notes (meeting_attachments, kind panel_notes). */
+export interface PanelNotesPhoto {
+  id: string;
+  file_name: string;
+  caption: string | null;
+  url: string | null;
 }
 
 export interface AssignedTask {
@@ -114,6 +132,7 @@ function emptyMinutes(): MinutesDetail {
     amendments: [],
     status: 'draft',
     locked_at: null,
+    paper_notes: [],
   };
 }
 
@@ -124,6 +143,7 @@ export default function MomEditor({
   team,
   currentUserId,
   currentUserName,
+  panelPhotos = [],
 }: {
   meeting: MeetingDetail;
   initialMinutes: MinutesDetail | null;
@@ -131,9 +151,13 @@ export default function MomEditor({
   team: TeamMember[];
   currentUserId: string;
   currentUserName: string;
+  panelPhotos?: PanelNotesPhoto[];
 }) {
   const router = useRouter();
   const supabase = createClient();
+  const toast = useToast();
+  const [printPrompt, setPrintPrompt] = useState(false);
+  const [readingPhotoId, setReadingPhotoId] = useState<string | null>(null);
 
   const [minutes, setMinutes] = useState<MinutesDetail>(initialMinutes ?? emptyMinutes());
   const wasLocked = Boolean(initialMinutes?.locked_at);
@@ -224,6 +248,57 @@ export default function MomEditor({
     }
   }
 
+  /** Saves the body without routing it for approval (client: save, then print now or later). */
+  async function handleSaveDraft() {
+    setSaving(true);
+    setError(null);
+    setNotice(null);
+    try {
+      await ensureSaved();
+      setNotice('Draft saved.');
+      setPrintPrompt(true);
+      router.refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not save.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  /** Reads one photographed page of panel notes with AI and keeps the text with the minutes. */
+  async function readPanelNotes(photo: PanelNotesPhoto) {
+    setReadingPhotoId(photo.id);
+    setError(null);
+    try {
+      const res = await fetch('/api/ai/read-notes', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ attachmentId: photo.id }),
+      });
+      const body = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(body?.error ?? 'The notes could not be read.');
+      const read = ((body?.notes ?? []) as { pageOrPanel?: string; note: string }[]).map((n) => ({
+        id: crypto.randomUUID(),
+        attachmentId: photo.id,
+        pageOrPanel: n.pageOrPanel ?? null,
+        note: n.note,
+        readAt: Date.now(),
+      }));
+      if (read.length === 0) throw new Error('No handwriting was found in that photo.');
+      const id = await ensureSaved();
+      const next = [...minutes.paper_notes.filter((n) => n.attachmentId !== photo.id), ...read];
+      const { data, error: updateError } = await supabase.from('minutes').update({ paper_notes: next }).eq('id', id).select('id');
+      if (updateError) throw updateError;
+      if (!data?.length) throw new Error('These minutes are locked. Amend them before adding notes.');
+      setMinutes((m) => ({ ...m, paper_notes: next }));
+      toast.success(`Read ${read.length} note${read.length === 1 ? '' : 's'} from ${photo.caption || photo.file_name}. The photo is kept as evidence.`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'The notes could not be read.');
+    } finally {
+      setReadingPhotoId(null);
+    }
+  }
+
   async function handleSaveAndRoute() {
     setSaving(true);
     setError(null);
@@ -252,6 +327,7 @@ export default function MomEditor({
         if (data) setMinutes((m) => ({ ...m, ...data }));
         setNotice('Saved and routed to the Head for approval.');
       }
+      setPrintPrompt(true);
       router.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not save.');
@@ -291,6 +367,7 @@ export default function MomEditor({
     const { error: insertError } = await supabase.from('tasks').insert({
       title: item.text,
       meeting_id: meeting.id,
+      department_id: meeting.departmentId,
       assignee_id: convertAssignee,
       delegated_by: currentUserId,
       deadline: convertDeadline || null,
@@ -304,7 +381,8 @@ export default function MomEditor({
     }
     const remaining = minutes.ai_action_items.filter((_, i) => i !== index);
     const id = minutes.id ?? (await ensureSaved());
-    await supabase.from('minutes').update({ ai_action_items: remaining }).eq('id', id);
+    const { error: stageError } = await supabase.from('minutes').update({ ai_action_items: remaining }).eq('id', id);
+    if (stageError) setError(`The task was created, but the suggestion couldn't be cleared: ${stageError.message}`);
     setMinutes((m) => ({ ...m, ai_action_items: remaining }));
     setConvertingIndex(null);
     setConvertAssignee('');
@@ -318,23 +396,26 @@ export default function MomEditor({
     <>
       <header className="flex items-center justify-between flex-wrap gap-md mb-lg no-print">
         <div>
-          <h1 className="font-h1 text-h1">Meeting Document Editor</h1>
+          <h1 className="font-h1 text-h1">Minutes editor</h1>
           <p className="font-body-md text-on-surface-variant">
-            {meeting.title} · {new Date(meeting.starts_at).toLocaleString('en-US', { year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
+            {meeting.title} · {fmtManila(meeting.starts_at)}
           </p>
         </div>
         <div className="flex gap-sm flex-wrap">
-          <button onClick={() => window.print()} className="border border-outline-variant px-md py-sm rounded-lg hover:bg-surface-container flex items-center gap-xs">
-            <span className="material-symbols-outlined text-[18px]">print</span> Print/PDF
-          </button>
-          <button onClick={handleSaveAndRoute} disabled={saving} className="bg-primary text-on-primary px-md py-sm rounded-lg shadow-primary-md flex items-center gap-xs disabled:opacity-60">
-            <span className="material-symbols-outlined text-[18px]">send</span> {saving ? 'Saving...' : 'Save & Route'}
-          </button>
+          <a href={`/print/meetings/${meeting.id}`} target="_blank" rel="noreferrer" className={buttonClasses('secondary')}>
+            <Icon name="print" size={18} /> Preview and print
+          </a>
+          <Button variant="secondary" icon="save" onClick={handleSaveDraft} disabled={saving || wasLocked} title={wasLocked ? 'Approved minutes change only through “Save and route” (an amendment).' : undefined}>
+            Save draft
+          </Button>
+          <Button icon="send" onClick={handleSaveAndRoute} loading={saving}>
+            Save and route for approval
+          </Button>
         </div>
       </header>
 
-      {error ? <div className="no-print mb-md bg-error-container text-error rounded-lg p-sm font-body-sm">{error}</div> : null}
-      {notice ? <div className="no-print mb-md bg-success-container text-success rounded-lg p-sm font-body-sm">{notice}</div> : null}
+      {error ? <div role="alert" className="no-print mb-md bg-error-container text-on-error-container rounded-lg p-sm font-body-sm">{error}</div> : null}
+      {notice ? <div role="status" className="no-print mb-md bg-success-container text-on-success-container rounded-lg p-sm font-body-sm">{notice}</div> : null}
 
       {minutes.locked_at ? (
         <div className="amend-banner mb-md no-print">
@@ -376,15 +457,14 @@ export default function MomEditor({
           <p className="font-label-caps text-label-caps text-on-surface-variant uppercase tracking-widest mb-xs">
             Zamboanga Peninsula Polytechnic State University
           </p>
-          <h2 className="font-h2 text-h2 text-primary font-bold">{meeting.departmentName?.toUpperCase() ?? ''}</h2>
-          <h1 className="font-h1 text-h1 mt-sm">{docTitle}</h1>
-          <h3 className="font-h3 text-h3 text-on-surface-variant mt-xs">{meeting.title}</h3>
+          <p className="font-h2 text-h2 text-primary font-bold uppercase">{meeting.departmentName ?? ''}</p>
+          <h2 className="font-h1 text-h1 mt-sm">{docTitle}</h2>
+          <p className="font-h3 text-h3 text-on-surface-variant mt-xs">{meeting.title}</p>
         </div>
 
         <div className="grid grid-cols-2 gap-md mb-md text-body-md">
           <p>
-            <strong className="text-on-surface-variant">Date:</strong>{' '}
-            {new Date(meeting.starts_at).toLocaleString('en-US', { year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
+            <strong className="text-on-surface-variant">Date:</strong> {fmtManila(meeting.starts_at)}
           </p>
           <p>
             <strong className="text-on-surface-variant">Venue:</strong> {meeting.venue ?? '—'}
@@ -428,10 +508,11 @@ export default function MomEditor({
         ) : null}
 
         <section className="mb-lg">
-          <h3 className="font-h3 text-h3 text-primary mb-sm flex items-center gap-sm">
-            <span className="material-symbols-outlined text-outline">gavel</span> 1. Call to Order &amp; Attendance
+          <h3 id="sec-call-to-order" className="font-h3 text-h3 text-primary mb-sm flex items-center gap-sm">
+            <Icon name="gavel" size={24} className="text-outline" /> 1. Call to order
           </h3>
           <textarea
+            aria-labelledby="sec-call-to-order"
             rows={3}
             value={minutes.call_to_order}
             onChange={(e) => setMinutes((m) => ({ ...m, call_to_order: e.target.value }))}
@@ -440,10 +521,11 @@ export default function MomEditor({
         </section>
 
         <section className="mb-lg">
-          <h3 className="font-h3 text-h3 text-primary mb-sm flex items-center gap-sm">
-            <span className="material-symbols-outlined text-outline">history</span> 2. Approval of Previous Minutes
+          <h3 id="sec-previous" className="font-h3 text-h3 text-primary mb-sm flex items-center gap-sm">
+            <Icon name="history" size={24} className="text-outline" /> 2. Approval of previous minutes
           </h3>
           <textarea
+            aria-labelledby="sec-previous"
             rows={3}
             value={minutes.previous_minutes}
             onChange={(e) => setMinutes((m) => ({ ...m, previous_minutes: e.target.value }))}
@@ -466,15 +548,22 @@ export default function MomEditor({
             ) : (
               minutes.agenda_items.map((a, i) => (
                 <div key={i} className="glass-panel border-l-4 border-l-tertiary-container rounded-r-lg p-md relative">
-                  <button onClick={() => removeAgenda(i)} className="no-print absolute top-sm right-sm text-on-surface-variant hover:text-error">
-                    <span className="material-symbols-outlined text-[18px]">close</span>
+                  <button
+                    type="button"
+                    onClick={() => removeAgenda(i)}
+                    aria-label={`Remove agenda item ${i + 1}`}
+                    className="no-print absolute top-sm right-sm flex h-8 w-8 items-center justify-center rounded-lg text-on-surface-variant hover:bg-error/10 hover:text-error"
+                  >
+                    <Icon name="close" size={18} />
                   </button>
                   <input
+                    aria-label={`Agenda item ${i + 1} title`}
                     value={a.title}
                     onChange={(e) => updateAgenda(i, 'title', e.target.value)}
                     className="font-body-lg font-semibold bg-transparent border-0 focus:bg-surface-container-low focus:ring-1 focus:ring-primary rounded px-xs w-full mb-xs"
                   />
                   <textarea
+                    aria-label={`Agenda item ${i + 1} discussion`}
                     rows={3}
                     value={a.notes}
                     onChange={(e) => updateAgenda(i, 'notes', e.target.value)}
@@ -564,8 +653,9 @@ export default function MomEditor({
         </section>
 
         <section className="mb-lg">
-          <h3 className="font-h3 text-h3 text-primary mb-sm">5. Adjournment</h3>
+          <h3 id="sec-adjournment" className="font-h3 text-h3 text-primary mb-sm">5. Adjournment</h3>
           <textarea
+            aria-labelledby="sec-adjournment"
             rows={2}
             value={minutes.adjournment}
             onChange={(e) => setMinutes((m) => ({ ...m, adjournment: e.target.value }))}
@@ -578,7 +668,7 @@ export default function MomEditor({
             <div className="h-[80px] mb-xs flex items-end justify-center">
               {mySignature ? (
                 // eslint-disable-next-line @next/next/no-img-element -- signature is a canvas-captured data URL, not a static asset
-                <img src={mySignature.dataUrl} alt="signature" className="max-h-[70px]" />
+                <img src={mySignature.dataUrl} alt={`Signature of ${meeting.secretaryName ?? currentUserName}`} className="max-h-[70px]" />
               ) : showSignPad ? null : (
                 <button
                   onClick={() => setShowSignPad(true)}
@@ -597,7 +687,7 @@ export default function MomEditor({
             <div className="h-[80px] mb-xs flex items-end justify-center">
               {headSignature ? (
                 // eslint-disable-next-line @next/next/no-img-element -- signature is a canvas-captured data URL, not a static asset
-                <img src={headSignature.dataUrl} alt="signature" className="max-h-[70px]" />
+                <img src={headSignature.dataUrl} alt={`Signature of ${meeting.chairName ?? 'the head'}`} className="max-h-[70px]" />
               ) : (
                 <span className="italic text-on-surface-variant text-body-sm">Awaiting Head&apos;s signature</span>
               )}
@@ -623,6 +713,49 @@ export default function MomEditor({
           </div>
         ) : null}
       </div>
+
+      <section aria-labelledby="panel-notes-heading" className="no-print mt-lg rounded-xl border border-outline-variant bg-surface-container-lowest p-md">
+        <div className="mb-sm flex flex-wrap items-center justify-between gap-sm">
+          <h3 id="panel-notes-heading" className="flex items-center gap-sm font-h3 text-h3">
+            <Icon name="draw" size={24} className="text-primary" /> Panel notes (from paper)
+          </h3>
+          <Link href={`/secretary/meetings/${meeting.id}?step=attachments`} className={buttonClasses('secondary', 'sm')}>
+            <Icon name="add_a_photo" size={18} /> Add a photo of the notes
+          </Link>
+        </div>
+        <p className="mb-md font-body-sm text-on-surface-variant">
+          Photos of the panel&apos;s handwritten notes are kept with the meeting. Read them with AI to add the text here; it prints in
+          the annex, separate from what was said in the recording.
+        </p>
+        {panelPhotos.length ? (
+          <ul className="mb-md flex flex-col gap-sm">
+            {panelPhotos.map((p) => (
+              <li key={p.id} className="flex flex-wrap items-center gap-sm">
+                {p.url ? (
+                  // eslint-disable-next-line @next/next/no-img-element -- signed private-bucket URL
+                  <img src={p.url} alt={p.caption || p.file_name} className="h-14 w-14 rounded-lg border border-outline-variant object-cover" />
+                ) : null}
+                <span className="min-w-0 flex-1 truncate font-body-sm">{p.caption || p.file_name}</span>
+                <Button variant="gold" size="sm" icon="auto_awesome" loading={readingPhotoId === p.id} disabled={readingPhotoId !== null} onClick={() => readPanelNotes(p)}>
+                  {minutes.paper_notes.some((n) => n.attachmentId === p.id) ? 'Read again' : 'Read with AI'}
+                </Button>
+              </li>
+            ))}
+          </ul>
+        ) : null}
+        {minutes.paper_notes.length ? (
+          <ul className="flex flex-col gap-xs">
+            {minutes.paper_notes.map((n, i) => (
+              <li key={n.id ?? i} className="rounded-lg bg-surface-container-low p-sm font-body-sm">
+                {n.pageOrPanel ? <strong>{n.pageOrPanel}: </strong> : null}
+                <span className="whitespace-pre-wrap">{n.note}</span>
+              </li>
+            ))}
+          </ul>
+        ) : panelPhotos.length === 0 ? (
+          <p className="font-body-sm text-on-surface-variant">No panel notes yet.</p>
+        ) : null}
+      </section>
 
       <section className="comments-panel mt-lg bg-surface-container-lowest border border-outline-variant rounded-xl p-md no-print">
         <h3 className="font-h3 text-h3 mb-md flex items-center gap-sm">
@@ -653,6 +786,32 @@ export default function MomEditor({
           </button>
         </form>
       </section>
+
+      <Dialog
+        open={printPrompt}
+        onClose={() => setPrintPrompt(false)}
+        size="sm"
+        icon="check_circle"
+        title="Minutes saved"
+        description="Print or save them as a PDF now, or come back later — every saved meeting can be printed from Meeting History."
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => { setPrintPrompt(false); toast.info('You can print these minutes anytime from Meeting History.'); }}>
+              Later
+            </Button>
+            <a href={`/print/meetings/${meeting.id}`} target="_blank" rel="noreferrer" onClick={() => setPrintPrompt(false)} className={buttonClasses('secondary')}>
+              <Icon name="visibility" size={18} /> Preview
+            </a>
+            <a href={`/print/meetings/${meeting.id}?autoprint=1`} target="_blank" rel="noreferrer" onClick={() => setPrintPrompt(false)} className={buttonClasses('primary')}>
+              <Icon name="print" size={18} /> Print now
+            </a>
+          </>
+        }
+      >
+        {minutes.status !== 'approved' ? (
+          <p className="font-body-sm text-on-surface-variant">Until the head approves them, printouts carry a DRAFT mark.</p>
+        ) : null}
+      </Dialog>
     </>
   );
 }
