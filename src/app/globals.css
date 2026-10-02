@@ -143,96 +143,468 @@
   --text-caption: 12px;
   --text-caption--line-height: 1.4;
   --text-caption--font-weight: 400;
+
+  /* -- Additive accessibility token (WCAG 1.4.3: success text >= 4.5:1) --- */
+  --color-on-success-container: #1b5e20;
+
+  /* -- Motion. Emil-weighted (productivity UI): short, ease-out, and no
+        motion at all on high-frequency or keyboard-initiated actions. ------ */
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
 }
 
 /* ============================================================================
-   Institutional theme utilities.
-
-   Ported from assets/css/theme.css. The legacy :root block is intentionally
-   omitted — @theme above already emits every --color-* it defined, with
-   identical values.
+   Base layer: motion durations, reduced motion, focus, form controls.
    ========================================================================== */
+@layer base {
+  :root {
+    --motion-fast: 120ms;
+    --motion-base: 180ms;
+    --motion-slow: 240ms;
+  }
 
-body {
-  font-family: 'Inter', system-ui, -apple-system, sans-serif;
-  background-color: var(--color-surface);
-  color: var(--color-on-surface);
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+  body {
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    background-color: var(--color-surface);
+    color: var(--color-on-surface);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* One visible, on-brand keyboard focus ring for every control (WCAG 2.4.7). */
+  :focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 2px;
+  }
+
+  /* @tailwindcss/forms draws a blue focus ring; make it the brand maroon.
+     [type] keeps specificity >= the plugin's selectors. */
+  [type]:focus,
+  select:focus,
+  textarea:focus {
+    --tw-ring-color: var(--color-primary);
+    border-color: var(--color-primary);
+  }
+
+  /* Icon ligatures are decorative text; never let them be selected. */
+  .material-symbols-outlined {
+    user-select: none;
+  }
+
+  /* Honour the OS "reduce motion" setting everywhere (WCAG 2.3.3). */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
 }
 
-/* Glassmorphic AI panel - signals intelligence features */
-.glass-panel {
-  background: rgba(255, 255, 255, 0.7);
-  /*
-    Standard property only. Lightning CSS (Tailwind v4) generates the
-    -webkit- prefix from the browserslist targets; hand-writing the prefixed
-    form here made it drop the unprefixed one, so Chrome got no blur at all.
-  */
-  backdrop-filter: blur(12px);
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
-  border: 1px solid var(--color-outline-variant);
-}
-
-/* AI Intelligence Badge - signature component */
-.ai-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 4px 10px;
-  border-radius: 9999px;
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  background: linear-gradient(90deg, #ffe088, #ffffff);
-  color: #574500;
-  border: 1px solid rgba(203, 167, 47, 0.4);
-  box-shadow: 0 2px 8px rgba(203, 167, 47, 0.15);
-}
-
-/* Maroon shadow for tactile primary buttons */
-.shadow-primary-md {
+/* Maroon shadow for tactile primary buttons. Declared as utilities (not plain
+   classes) so variants like hover:shadow-primary-md actually generate CSS. */
+@utility shadow-primary-md {
   box-shadow: 0 4px 14px rgba(87, 0, 0, 0.25);
 }
-.shadow-primary-lg {
+@utility shadow-primary-lg {
   box-shadow: 0 8px 24px rgba(87, 0, 0, 0.3);
 }
 
-/* CHED-style minutes document */
-.ched-doc {
-  background: #ffffff;
-  max-width: 850px;
-  margin: 0 auto;
-  padding: 64px 72px;
-  border: 1px solid var(--color-outline-variant);
-  border-radius: 16px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.06);
-}
+/* ============================================================================
+   Institutional theme components.
 
-.ched-doc h1,
-.ched-doc h2,
-.ched-doc h3 {
-  font-family: 'Public Sans', sans-serif;
-}
+   Ported from assets/css/theme.css. Kept in the components layer so Tailwind
+   utilities on the same element win (e.g. border-l-4 on a .glass-panel).
+   ========================================================================== */
+@layer components {
+  /* Glassmorphic AI panel - signals intelligence features */
+  .glass-panel {
+    background: rgba(255, 255, 255, 0.7);
+    /*
+      Standard property only. Lightning CSS (Tailwind v4) generates the
+      -webkit- prefix from the browserslist targets; hand-writing the prefixed
+      form here made it drop the unprefixed one, so Chrome got no blur at all.
+    */
+    backdrop-filter: blur(12px);
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
+    border: 1px solid var(--color-outline-variant);
+  }
 
-/* Pulse animation for live recording indicator */
-@keyframes pulse-record {
-  0%,
-  100% {
+  /* AI Intelligence Badge - signature component */
+  .ai-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 10px;
+    border-radius: 9999px;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    background: linear-gradient(90deg, #ffe088, #ffffff);
+    color: #574500;
+    border: 1px solid rgba(203, 167, 47, 0.4);
+    box-shadow: 0 2px 8px rgba(203, 167, 47, 0.15);
+  }
+
+  /* CHED-style minutes document */
+  .ched-doc {
+    background: #ffffff;
+    max-width: 850px;
+    margin: 0 auto;
+    padding: 64px 72px;
+    border: 1px solid var(--color-outline-variant);
+    border-radius: 16px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.06);
+  }
+  @media (max-width: 767.98px) {
+    .ched-doc {
+      padding: 24px 20px;
+    }
+  }
+
+  .ched-doc h1,
+  .ched-doc h2,
+  .ched-doc h3 {
+    font-family: 'Public Sans', sans-serif;
+  }
+
+  /* Recording indicator: a steady dot. The running timer next to it is the
+     "it's live" signal, so the dot itself does not pulse. */
+  .record-dot {
     opacity: 1;
-    transform: scale(1);
   }
-  50% {
-    opacity: 0.6;
-    transform: scale(1.15);
+
+  /* Decorative soundwave on the landing page only. Reduced motion stops it. */
+  .wave-bar {
+    animation: wave-bar 1s var(--ease-in-out) infinite;
+    transform-origin: bottom;
   }
-}
-.record-dot {
-  animation: pulse-record 1.4s ease-in-out infinite;
+  .wave-bar:nth-child(1) { animation-delay: 0s; }
+  .wave-bar:nth-child(2) { animation-delay: 0.1s; }
+  .wave-bar:nth-child(3) { animation-delay: 0.2s; }
+  .wave-bar:nth-child(4) { animation-delay: 0.3s; }
+  .wave-bar:nth-child(5) { animation-delay: 0.4s; }
+  .wave-bar:nth-child(6) { animation-delay: 0.5s; }
+  .wave-bar:nth-child(7) { animation-delay: 0.4s; }
+  .wave-bar:nth-child(8) { animation-delay: 0.3s; }
+  .wave-bar:nth-child(9) { animation-delay: 0.2s; }
+  .wave-bar:nth-child(10) { animation-delay: 0.1s; }
+
+  /* Signature pad styling */
+  .sig-canvas {
+    background: #fffdf5;
+    border: 1px dashed var(--color-outline);
+    border-radius: 8px;
+    cursor: crosshair;
+    touch-action: none;
+    display: block;
+    width: 100%;
+  }
+
+  /* Off-canvas sidebar below the md breakpoint. 767.98px matches Tailwind's
+     md (min-width: 768px) exactly, so there is no width with no navigation. */
+  @media (max-width: 767.98px) {
+    .app-sidebar {
+      transform: translateX(-100%);
+      transition: transform var(--motion-base) var(--ease-in);
+    }
+    .app-sidebar.open {
+      transform: translateX(0);
+      transition: transform var(--motion-slow) var(--ease-out);
+      box-shadow: 0 0 40px rgba(0, 0, 0, 0.25);
+    }
+    .app-main {
+      margin-left: 0 !important;
+    }
+  }
+  .sidebar-scrim {
+    position: fixed;
+    inset: 0;
+    z-index: 35;
+    background: rgba(26, 28, 28, 0.45);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity var(--motion-base) var(--ease-out);
+  }
+  .sidebar-scrim[data-open='true'] {
+    opacity: 1;
+    pointer-events: auto;
+  }
+  @media (min-width: 768px) {
+    .sidebar-scrim {
+      display: none;
+    }
+  }
+
+  /* Kanban cards (moved with buttons, not drag and drop) */
+  .kanban-card {
+    transition: box-shadow var(--motion-fast) var(--ease-out);
+  }
+
+  /* Status pills */
+  .pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 10px;
+    border-radius: 9999px;
+    font-size: 12px;
+    font-weight: 600;
+  }
+  .pill-pending {
+    background: #e8e8e8;
+    color: #5a413d;
+  }
+  .pill-progress {
+    background: rgba(203, 167, 47, 0.15);
+    color: #574500;
+    border: 1px solid rgba(203, 167, 47, 0.3);
+  }
+  .pill-done {
+    background: rgba(46, 125, 50, 0.12);
+    color: var(--color-on-success-container);
+  }
+  .pill-overdue {
+    background: rgba(186, 26, 26, 0.12);
+    color: #93000a;
+  }
+  .pill-ai {
+    background: linear-gradient(90deg, #ffe088, #ffffff);
+    color: #574500;
+    border: 1px solid rgba(203, 167, 47, 0.3);
+  }
+  .pill-locked {
+    background: rgba(87, 0, 0, 0.08);
+    color: #570000;
+    border: 1px solid rgba(87, 0, 0, 0.18);
+  }
+  .pill-amend {
+    background: rgba(203, 167, 47, 0.2);
+    color: #574500;
+    border: 1px solid rgba(203, 167, 47, 0.4);
+  }
+  .pill-capstone {
+    background: rgba(87, 0, 0, 0.1);
+    color: #570000;
+    border: 1px solid rgba(87, 0, 0, 0.18);
+  }
+  .pill-research {
+    background: rgba(46, 125, 50, 0.12);
+    color: var(--color-on-success-container);
+    border: 1px solid rgba(46, 125, 50, 0.25);
+  }
+  .pill-regular {
+    background: rgba(0, 0, 0, 0.05);
+    color: #5a413d;
+    border: 1px solid rgba(0, 0, 0, 0.08);
+  }
+  .pill-emergency {
+    background: rgba(186, 26, 26, 0.1);
+    color: #93000a;
+    border: 1px solid rgba(186, 26, 26, 0.3);
+  }
+
+  /* Lock & amendment banners */
+  .lock-banner {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    background: rgba(87, 0, 0, 0.06);
+    border: 1px solid rgba(87, 0, 0, 0.2);
+    color: #570000;
+    border-radius: 12px;
+    padding: 14px 16px;
+  }
+  .amend-banner {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    background: linear-gradient(90deg, rgba(255, 224, 136, 0.55), rgba(255, 224, 136, 0.25));
+    border: 1px solid rgba(203, 167, 47, 0.55);
+    color: #574500;
+    border-radius: 12px;
+    padding: 14px 16px;
+  }
+
+  /* Calendar grid (display only; events are links) */
+  .cal-grid {
+    display: grid;
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    gap: 1px;
+    background: var(--color-outline-variant);
+    border-radius: 12px;
+    overflow: hidden;
+  }
+  .cal-head {
+    background: var(--color-surface-container);
+    padding: 8px 10px;
+    font-size: 12px;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--color-on-surface-variant);
+    font-weight: 600;
+  }
+  .cal-cell {
+    background: var(--color-surface-container-lowest);
+    padding: 8px;
+    min-height: 110px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    position: relative;
+  }
+  .cal-cell.muted {
+    background: #fafafa;
+    color: var(--color-secondary);
+  }
+  .cal-cell.today {
+    background: rgba(87, 0, 0, 0.06);
+  }
+  .cal-cell.today .cal-daynum {
+    background: var(--color-primary);
+    color: #fff;
+    border-radius: 50%;
+    width: 26px;
+    height: 26px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .cal-daynum {
+    font-weight: 600;
+    font-size: 13px;
+  }
+  .cal-event {
+    font-size: 12px;
+    padding: 3px 6px;
+    border-radius: 4px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .cal-event:hover {
+    filter: brightness(0.95);
+  }
+  .cal-event.regular {
+    background: rgba(87, 0, 0, 0.12);
+    color: #570000;
+  }
+  .cal-event.capstone {
+    background: rgba(203, 167, 47, 0.3);
+    color: #574500;
+  }
+  .cal-event.research {
+    background: rgba(46, 125, 50, 0.15);
+    color: var(--color-on-success-container);
+  }
+  .cal-event.emergency {
+    background: rgba(186, 26, 26, 0.12);
+    color: #93000a;
+  }
+  .cal-event.personal {
+    background: rgba(0, 0, 0, 0.08);
+    color: #1a1c1c;
+    border: 1px dashed rgba(0, 0, 0, 0.2);
+  }
+  .cal-more {
+    font-size: 12px;
+    color: var(--color-primary);
+  }
+
+  /* Folder cards used in Meeting History: shadow-only hover (no lift on a
+     grid people scan many times a day). */
+  .folder-card {
+    background: var(--color-surface-container-lowest);
+    border: 1px solid var(--color-outline-variant);
+    border-radius: 12px;
+    padding: 14px;
+    transition: box-shadow var(--motion-fast) var(--ease-out);
+  }
+  .folder-card:hover {
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.08);
+  }
+
+  /* Comments panel */
+  .comments-panel .comment {
+    background: var(--color-surface-container-low);
+    border: 1px solid var(--color-outline-variant);
+    border-radius: 12px;
+    padding: 10px 12px;
+  }
+  .comments-panel .comment.reply {
+    margin-left: 32px;
+    border-left: 3px solid var(--color-primary);
+  }
+
+  /* --------------------------------------------------------------------------
+     Dialog (native <dialog>, see components/ui/Dialog.tsx).
+     Enter 180ms ease-out from slightly below; exit 120ms, subtler, upward.
+     @starting-style + allow-discrete give enter/exit without JS; browsers
+     without them simply show/hide instantly.
+     ------------------------------------------------------------------------ */
+  .sm-dialog {
+    opacity: 0;
+    transform: translateY(-4px);
+    transition:
+      opacity var(--motion-fast) var(--ease-in),
+      transform var(--motion-fast) var(--ease-in),
+      overlay var(--motion-fast) allow-discrete,
+      display var(--motion-fast) allow-discrete;
+  }
+  .sm-dialog[open] {
+    opacity: 1;
+    transform: none;
+    transition-duration: var(--motion-base);
+    transition-timing-function: var(--ease-out);
+  }
+  @starting-style {
+    .sm-dialog[open] {
+      opacity: 0;
+      transform: translateY(8px) scale(0.98);
+    }
+  }
+  .sm-dialog::backdrop {
+    background: rgba(26, 28, 28, 0);
+    transition:
+      background-color var(--motion-base) var(--ease-out),
+      overlay var(--motion-base) allow-discrete,
+      display var(--motion-base) allow-discrete;
+  }
+  .sm-dialog[open]::backdrop {
+    background: rgba(26, 28, 28, 0.5);
+  }
+  @starting-style {
+    .sm-dialog[open]::backdrop {
+      background: rgba(26, 28, 28, 0);
+    }
+  }
+
+  /* --------------------------------------------------------------------------
+     Toasts (components/ui/Toast.tsx). Enter: opacity + 8px rise, 180ms.
+     Exit: fade only, 120ms.
+     ------------------------------------------------------------------------ */
+  .sm-toast {
+    transition:
+      opacity var(--motion-base) var(--ease-out),
+      transform var(--motion-base) var(--ease-out);
+  }
+  @starting-style {
+    .sm-toast {
+      opacity: 0;
+      transform: translateY(8px);
+    }
+  }
+  .sm-toast[data-leaving='true'] {
+    opacity: 0;
+    transition: opacity var(--motion-fast) var(--ease-in);
+  }
 }
 
-/* Animated soundwave bars (for live recording) */
 @keyframes wave-bar {
   0%,
   100% {
@@ -240,161 +612,6 @@ body {
   }
   50% {
     transform: scaleY(1);
-  }
-}
-.wave-bar {
-  animation: wave-bar 1s ease-in-out infinite;
-  transform-origin: bottom;
-}
-.wave-bar:nth-child(1) {
-  animation-delay: 0s;
-}
-.wave-bar:nth-child(2) {
-  animation-delay: 0.1s;
-}
-.wave-bar:nth-child(3) {
-  animation-delay: 0.2s;
-}
-.wave-bar:nth-child(4) {
-  animation-delay: 0.3s;
-}
-.wave-bar:nth-child(5) {
-  animation-delay: 0.4s;
-}
-.wave-bar:nth-child(6) {
-  animation-delay: 0.5s;
-}
-.wave-bar:nth-child(7) {
-  animation-delay: 0.4s;
-}
-.wave-bar:nth-child(8) {
-  animation-delay: 0.3s;
-}
-.wave-bar:nth-child(9) {
-  animation-delay: 0.2s;
-}
-.wave-bar:nth-child(10) {
-  animation-delay: 0.1s;
-}
-
-/* Toast notification stack */
-#toast-stack {
-  position: fixed;
-  top: 80px;
-  right: 24px;
-  z-index: 9999;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  pointer-events: none;
-}
-.toast {
-  pointer-events: auto;
-  min-width: 280px;
-  max-width: 380px;
-  padding: 12px 16px;
-  border-radius: 8px;
-  background: #ffffff;
-  border-left: 4px solid var(--color-primary);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  font-size: 14px;
-  animation: toast-in 0.25s ease-out;
-}
-.toast.success {
-  border-left-color: var(--color-success);
-}
-.toast.error {
-  border-left-color: var(--color-error);
-}
-.toast.ai {
-  border-left-color: var(--color-tertiary-container);
-}
-@keyframes toast-in {
-  from {
-    opacity: 0;
-    transform: translateX(24px);
-  }
-  to {
-    opacity: 1;
-    transform: translateX(0);
-  }
-}
-
-/* Signature pad styling */
-.sig-canvas {
-  background: #fffdf5;
-  border: 1px dashed var(--color-outline);
-  border-radius: 8px;
-  cursor: crosshair;
-  touch-action: none;
-  display: block;
-  width: 100%;
-}
-
-/* Sidebar collapse on small screens */
-.sidebar-collapsed {
-  transform: translateX(-100%);
-}
-@media (max-width: 768px) {
-  .app-sidebar {
-    transform: translateX(-100%);
-    transition: transform 0.25s ease;
-  }
-  .app-sidebar.open {
-    transform: translateX(0);
-  }
-  .app-main {
-    margin-left: 0 !important;
-  }
-}
-
-/* Kanban drag styling */
-.kanban-card {
-  cursor: grab;
-  transition:
-    transform 0.15s,
-    box-shadow 0.15s;
-}
-.kanban-card:active {
-  cursor: grabbing;
-}
-.kanban-card.dragging {
-  opacity: 0.5;
-  transform: scale(0.97);
-}
-.kanban-col.drag-over {
-  background-color: rgba(87, 0, 0, 0.05);
-  border-color: var(--color-primary);
-}
-
-/* Print styles - MoM / Report PDF export */
-@media print {
-  nav,
-  header,
-  .no-print,
-  #toast-stack,
-  button:not(.print-keep) {
-    display: none !important;
-  }
-  body {
-    background: white !important;
-  }
-  .app-main {
-    margin-left: 0 !important;
-    padding: 0 !important;
-  }
-  .ched-doc {
-    box-shadow: none !important;
-    border: none !important;
-    padding: 0 !important;
-    max-width: 100% !important;
-  }
-  @page {
-    margin: 1.5cm;
-    size: A4;
   }
 }
 
@@ -414,243 +631,37 @@ body {
   background: rgba(87, 0, 0, 0.3);
 }
 
-/* Loading skeleton */
-.skeleton {
-  background: linear-gradient(90deg, #eee 25%, #f5f5f5 50%, #eee 75%);
-  background-size: 200% 100%;
-  animation: skeleton-pulse 1.4s ease-in-out infinite;
-  border-radius: 6px;
-}
-@keyframes skeleton-pulse {
-  0% {
-    background-position: 200% 0;
-  }
-  100% {
-    background-position: -200% 0;
-  }
-}
-
-/* Status pills */
-.pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 3px 10px;
-  border-radius: 9999px;
-  font-size: 11px;
-  font-weight: 600;
-}
-.pill-pending {
-  background: #e8e8e8;
-  color: #5a413d;
-}
-.pill-progress {
-  background: rgba(203, 167, 47, 0.15);
-  color: #574500;
-  border: 1px solid rgba(203, 167, 47, 0.3);
-}
-.pill-done {
-  background: rgba(46, 125, 50, 0.12);
-  color: #2e7d32;
-}
-.pill-overdue {
-  background: rgba(186, 26, 26, 0.12);
-  color: #ba1a1a;
-}
-.pill-ai {
-  background: linear-gradient(90deg, #ffe088, #ffffff);
-  color: #574500;
-  border: 1px solid rgba(203, 167, 47, 0.3);
-}
-.pill-locked {
-  background: rgba(87, 0, 0, 0.08);
-  color: #570000;
-  border: 1px solid rgba(87, 0, 0, 0.18);
-}
-.pill-amend {
-  background: rgba(203, 167, 47, 0.2);
-  color: #574500;
-  border: 1px solid rgba(203, 167, 47, 0.4);
-}
-.pill-capstone {
-  background: rgba(87, 0, 0, 0.1);
-  color: #570000;
-  border: 1px solid rgba(87, 0, 0, 0.18);
-}
-.pill-research {
-  background: rgba(46, 125, 50, 0.12);
-  color: #2e7d32;
-  border: 1px solid rgba(46, 125, 50, 0.25);
-}
-.pill-regular {
-  background: rgba(0, 0, 0, 0.05);
-  color: #5a413d;
-  border: 1px solid rgba(0, 0, 0, 0.08);
-}
-
-/* Lock & amendment banners */
-.lock-banner {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  background: rgba(87, 0, 0, 0.06);
-  border: 1px solid rgba(87, 0, 0, 0.2);
-  color: #570000;
-  border-radius: 12px;
-  padding: 14px 16px;
-}
-.amend-banner {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  background: linear-gradient(90deg, rgba(255, 224, 136, 0.55), rgba(255, 224, 136, 0.25));
-  border: 1px solid rgba(203, 167, 47, 0.55);
-  color: #574500;
-  border-radius: 12px;
-  padding: 14px 16px;
-}
-
-/* Pre-print modal backdrop */
-.pre-print-modal {
-  position: fixed;
-  inset: 0;
-  background: rgba(26, 28, 28, 0.55);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1000;
-  padding: 24px;
-}
-.pre-print-card {
-  background: #fff;
-  border-radius: 16px;
-  max-width: 520px;
-  width: 100%;
-  padding: 24px;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.25);
-}
-
-/* Calendar grid */
-.cal-grid {
-  display: grid;
-  grid-template-columns: repeat(7, minmax(0, 1fr));
-  gap: 1px;
-  background: var(--color-outline-variant);
-  border-radius: 12px;
-  overflow: hidden;
-}
-.cal-head {
-  background: var(--color-surface-container);
-  padding: 8px 10px;
-  font-size: 11px;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-  color: var(--color-on-surface-variant);
-  font-weight: 600;
-}
-.cal-cell {
-  background: var(--color-surface-container-lowest);
-  padding: 8px;
-  min-height: 110px;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  cursor: pointer;
-  transition: background 0.15s;
-  position: relative;
-}
-.cal-cell:hover {
-  background: var(--color-surface-container-low);
-}
-.cal-cell.muted {
-  background: #fafafa;
-  color: #999;
-}
-.cal-cell.today {
-  background: rgba(87, 0, 0, 0.06);
-}
-.cal-cell.today .cal-daynum {
-  background: var(--color-primary);
-  color: #fff;
-  border-radius: 50%;
-  width: 26px;
-  height: 26px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-}
-.cal-daynum {
-  font-weight: 600;
-  font-size: 13px;
-}
-.cal-event {
-  font-size: 11px;
-  padding: 2px 6px;
-  border-radius: 4px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  cursor: pointer;
-}
-.cal-event:hover {
-  filter: brightness(0.95);
-}
-.cal-event.regular {
-  background: rgba(87, 0, 0, 0.12);
-  color: #570000;
-}
-.cal-event.capstone {
-  background: rgba(203, 167, 47, 0.3);
-  color: #574500;
-}
-.cal-event.research {
-  background: rgba(46, 125, 50, 0.15);
-  color: #2e7d32;
-}
-.cal-event.personal {
-  background: rgba(0, 0, 0, 0.08);
-  color: #1a1c1c;
-  border: 1px dashed rgba(0, 0, 0, 0.2);
-}
-.cal-more {
-  font-size: 10px;
-  color: var(--color-primary);
-  cursor: pointer;
-}
-
-/* Folder cards used in archives */
-.folder-card {
-  background: var(--color-surface-container-lowest);
-  border: 1px solid var(--color-outline-variant);
-  border-radius: 12px;
-  padding: 14px;
-  transition:
-    transform 0.15s,
-    box-shadow 0.15s;
-}
-.folder-card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.08);
-}
-
-/* Comments panel */
-.comments-panel .comment {
-  background: var(--color-surface-container-low);
-  border: 1px solid var(--color-outline-variant);
-  border-radius: 12px;
-  padding: 10px 12px;
-}
-.comments-panel .comment.reply {
-  margin-left: 32px;
-  border-left: 3px solid var(--color-primary);
-}
-
-/* Print refinements - hide auxiliary panels */
+/* Print styles - minutes / reports */
 @media print {
+  nav,
+  header,
+  .app-sidebar,
+  .sidebar-scrim,
+  .no-print,
+  [data-toast-region],
+  button:not(.print-keep) {
+    display: none !important;
+  }
+  body {
+    background: white !important;
+  }
+  .app-main {
+    margin-left: 0 !important;
+    padding: 0 !important;
+  }
+  .ched-doc {
+    box-shadow: none !important;
+    border: none !important;
+    padding: 0 !important;
+    max-width: 100% !important;
+  }
   .lock-banner,
   .amend-banner,
-  .comments-panel,
-  .pre-print-modal {
+  .comments-panel {
     display: none !important;
+  }
+  @page {
+    margin: 1.5cm;
+    size: A4;
   }
 }
