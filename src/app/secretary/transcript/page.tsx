@@ -46,7 +46,7 @@ export default async function SecretaryTranscriptPage({
                       {t.language}
                     </p>
                   </div>
-                  <span className="material-symbols-outlined text-on-surface-variant">chevron_right</span>
+                  <span aria-hidden="true" translate="no" className="material-symbols-outlined text-on-surface-variant">chevron_right</span>
                 </Link>
               );
             })

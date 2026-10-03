@@ -420,7 +420,7 @@ export default function MomEditor({
 
       {minutes.locked_at ? (
         <div className="amend-banner mb-md no-print">
-          <span className="material-symbols-outlined">edit_note</span>
+          <span aria-hidden="true" translate="no" className="material-symbols-outlined">edit_note</span>
           <div>
             <p className="font-semibold">This document is locked by the Head&apos;s approval.</p>
             <p className="font-caption text-caption">
@@ -434,7 +434,7 @@ export default function MomEditor({
       {minutes.amendments.length > 0 ? (
         <details className="no-print bg-surface-container-low border border-outline-variant rounded-lg p-md mb-md">
           <summary className="cursor-pointer font-semibold flex items-center gap-sm">
-            <span className="material-symbols-outlined text-tertiary-container">history_edu</span> Amendment History ({minutes.amendments.length})
+            <span aria-hidden="true" translate="no" className="material-symbols-outlined text-tertiary">history_edu</span> Amendment History ({minutes.amendments.length})
           </summary>
           <ul className="mt-sm space-y-xs">
             {[...minutes.amendments].reverse().map((a, i) => (
@@ -451,7 +451,7 @@ export default function MomEditor({
       <div className="ched-doc">
         <div className="text-center border-b-2 border-primary pb-md mb-lg">
           <div className="w-16 h-16 mx-auto mb-sm rounded-full bg-primary text-on-primary flex items-center justify-center shadow-primary-md">
-            <span className="material-symbols-outlined text-[28px]" style={{ fontVariationSettings: "'FILL' 1" }}>
+            <span aria-hidden="true" translate="no" className="material-symbols-outlined text-[28px]" style={{ fontVariationSettings: "'FILL' 1" }}>
               account_balance
             </span>
           </div>
@@ -481,7 +481,7 @@ export default function MomEditor({
         {projectMeta ? (
           <div className="mb-xl bg-tertiary-fixed/30 border border-tertiary-container/40 rounded-lg p-md">
             <p className="font-label-caps text-label-caps text-tertiary mb-sm flex items-center gap-xs">
-              <span className="material-symbols-outlined text-[16px]">school</span>
+              <span aria-hidden="true" translate="no" className="material-symbols-outlined text-[16px]">school</span>
               {meeting.meeting_type === 'capstone' ? 'Capstone' : 'Research'} Defense Details
             </p>
             <div className="grid grid-cols-2 gap-md text-body-sm">
@@ -537,10 +537,10 @@ export default function MomEditor({
         <section className="mb-xl">
           <div className="flex items-center justify-between mb-md">
             <h3 className="font-h3 text-h3 text-primary flex items-center gap-sm">
-              <span className="material-symbols-outlined text-outline">list_alt</span> 3. Agenda Items &amp; Discussions
+              <span aria-hidden="true" translate="no" className="material-symbols-outlined text-outline">list_alt</span> 3. Agenda Items &amp; Discussions
             </h3>
             <button onClick={addAgenda} className="no-print text-primary hover:underline font-label-caps text-label-caps flex items-center gap-xs">
-              <span className="material-symbols-outlined text-[16px]">add</span> Add Item
+              <span aria-hidden="true" translate="no" className="material-symbols-outlined text-[16px]">add</span> Add Item
             </button>
           </div>
           <div className="space-y-md">
@@ -579,7 +579,7 @@ export default function MomEditor({
         {minutes.ai_action_items.length > 0 ? (
           <section className="mb-xl no-print">
             <h3 className="font-h3 text-h3 text-primary mb-md flex items-center gap-sm">
-              <span className="material-symbols-outlined text-outline">auto_awesome</span> AI-Suggested Action Items
+              <span aria-hidden="true" translate="no" className="material-symbols-outlined text-outline">auto_awesome</span> AI-Suggested Action Items
             </h3>
             <div className="space-y-sm">
               {minutes.ai_action_items.map((item, i) => (
@@ -590,7 +590,7 @@ export default function MomEditor({
                   </p>
                   {convertingIndex === i ? (
                     <div className="flex flex-wrap gap-xs mt-xs items-center">
-                      <select value={convertAssignee} onChange={(e) => setConvertAssignee(e.target.value)} className="rounded-lg border-outline-variant bg-surface-container-lowest text-body-sm">
+                      <select aria-label="Assign to" value={convertAssignee} onChange={(e) => setConvertAssignee(e.target.value)} className="rounded-lg border-outline-variant bg-surface-container-lowest text-body-sm">
                         <option value="">Assign to...</option>
                         {team.map((t) => (
                           <option key={t.id} value={t.id}>
@@ -598,7 +598,7 @@ export default function MomEditor({
                           </option>
                         ))}
                       </select>
-                      <input type="date" value={convertDeadline} onChange={(e) => setConvertDeadline(e.target.value)} className="rounded-lg border-outline-variant bg-surface-container-lowest text-body-sm" />
+                      <input aria-label="Deadline" type="date" value={convertDeadline} onChange={(e) => setConvertDeadline(e.target.value)} className="rounded-lg border-outline-variant bg-surface-container-lowest text-body-sm" />
                       <button onClick={() => convertActionItem(i)} className="bg-primary text-on-primary px-sm py-xs rounded-lg text-body-sm font-semibold">
                         Create Task
                       </button>
@@ -619,7 +619,7 @@ export default function MomEditor({
 
         <section className="mb-xl">
           <h3 className="font-h3 text-h3 text-primary mb-md flex items-center gap-sm">
-            <span className="material-symbols-outlined text-outline">assignment_turned_in</span> 4. Action Items
+            <span aria-hidden="true" translate="no" className="material-symbols-outlined text-outline">assignment_turned_in</span> 4. Action Items
           </h3>
           <table className="w-full text-left text-body-sm">
             <thead>
@@ -675,7 +675,7 @@ export default function MomEditor({
                   onClick={() => setShowSignPad(true)}
                   className="no-print bg-surface border border-dashed border-primary text-primary px-md py-sm rounded-lg hover:bg-primary-fixed/20 flex items-center gap-xs"
                 >
-                  <span className="material-symbols-outlined text-[16px]">draw</span> Sign as Secretary
+                  <span aria-hidden="true" translate="no" className="material-symbols-outlined text-[16px]">draw</span> Sign as Secretary
                 </button>
               )}
             </div>
@@ -760,7 +760,7 @@ export default function MomEditor({
 
       <section className="comments-panel mt-lg bg-surface-container-lowest border border-outline-variant rounded-xl p-md no-print">
         <h3 className="font-h3 text-h3 mb-md flex items-center gap-sm">
-          <span className="material-symbols-outlined text-primary">forum</span> Comments on this document
+          <span aria-hidden="true" translate="no" className="material-symbols-outlined text-primary">forum</span> Comments on this document
         </h3>
         <div className="space-y-sm mb-md">
           {minutes.comments.length === 0 ? (
@@ -777,9 +777,10 @@ export default function MomEditor({
         </div>
         <form onSubmit={postComment} className="flex gap-sm">
           <input
+            aria-label="Add a comment"
             value={commentText}
             onChange={(e) => setCommentText(e.target.value)}
-            placeholder="Add a comment for the panel / approvers..."
+            placeholder="Add a comment for the panel or approvers…"
             className="flex-1 px-md py-sm rounded-lg bg-surface-container-low border-2 border-transparent focus:border-primary focus:ring-0"
           />
           <button type="submit" disabled={postingComment} className="px-md py-sm rounded-lg bg-primary text-on-primary shadow-primary-md font-label-caps text-label-caps disabled:opacity-60">

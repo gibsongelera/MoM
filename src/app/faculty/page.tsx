@@ -60,7 +60,7 @@ export default async function FacultyDashboardPage() {
         <section className="col-span-12 lg:col-span-7 bg-surface-container-lowest border border-outline-variant rounded-xl overflow-hidden">
           <div className="p-md border-b border-outline-variant flex justify-between items-center">
             <h3 className="font-h3 text-h3 flex items-center gap-sm">
-              <span className="material-symbols-outlined text-primary">task_alt</span> My Active Tasks
+              <span aria-hidden="true" translate="no" className="material-symbols-outlined text-primary">task_alt</span> My Active Tasks
             </h3>
           </div>
           <div className="divide-y divide-outline-variant">
@@ -73,7 +73,7 @@ export default async function FacultyDashboardPage() {
                   <div key={t.id} className="p-md flex items-center justify-between hover:bg-surface-container-low transition-colors">
                     <div className="flex items-start gap-md flex-1 min-w-0">
                       <div className="w-10 h-10 rounded-lg bg-primary/10 text-primary flex items-center justify-center shrink-0">
-                        <span className="material-symbols-outlined">checklist</span>
+                        <span aria-hidden="true" translate="no" className="material-symbols-outlined">checklist</span>
                       </div>
                       <div className="flex-1 min-w-0">
                         <p className="font-body-md font-semibold truncate">{t.title}</p>
@@ -84,7 +84,7 @@ export default async function FacultyDashboardPage() {
                           </span>
                           {t.deadline ? (
                             <span className={`font-caption text-caption ${overdue ? 'text-error font-semibold' : 'text-on-surface-variant'}`}>
-                              <span className="material-symbols-outlined text-[12px]">schedule</span> {t.deadline}
+                              <span aria-hidden="true" translate="no" className="material-symbols-outlined text-[12px]">schedule</span> {t.deadline}
                             </span>
                           ) : null}
                         </div>
@@ -99,7 +99,7 @@ export default async function FacultyDashboardPage() {
 
         <section className="col-span-12 lg:col-span-5 bg-surface-container-lowest border border-outline-variant rounded-xl p-md">
           <h3 className="font-h3 text-h3 mb-md flex items-center gap-sm">
-            <span className="material-symbols-outlined text-primary">event_upcoming</span> Upcoming Meetings
+            <span aria-hidden="true" translate="no" className="material-symbols-outlined text-primary">event_upcoming</span> Upcoming Meetings
           </h3>
           <div className="space-y-sm">
             {upcoming.length === 0 ? (
@@ -108,7 +108,7 @@ export default async function FacultyDashboardPage() {
               upcoming.map((m) => (
                 <div key={m.id} className="p-sm bg-surface-container-low rounded-lg border border-outline-variant flex items-center gap-sm">
                   <div className="w-9 h-9 rounded-lg bg-primary text-on-primary flex items-center justify-center shrink-0">
-                    <span className="material-symbols-outlined text-[18px]">event</span>
+                    <span aria-hidden="true" translate="no" className="material-symbols-outlined text-[18px]">event</span>
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="font-body-sm font-semibold truncate">{m.title}</p>
@@ -127,7 +127,7 @@ export default async function FacultyDashboardPage() {
       <section className="bg-surface-container-lowest border border-outline-variant rounded-xl p-md mt-md">
         <div className="flex items-center justify-between mb-md">
           <h3 className="font-h3 text-h3 flex items-center gap-sm">
-            <span className="material-symbols-outlined text-primary">event_available</span> Personal Meeting Log
+            <span aria-hidden="true" translate="no" className="material-symbols-outlined text-primary">event_available</span> Personal Meeting Log
           </h3>
           <a href="/faculty/personal-meetings" className="text-primary hover:underline font-label-caps text-label-caps">
             VIEW ALL
@@ -157,7 +157,7 @@ export default async function FacultyDashboardPage() {
 
       <section className="bg-surface-container-lowest border border-outline-variant rounded-xl p-md mt-md">
         <h3 className="font-h3 text-h3 mb-md flex items-center gap-sm">
-          <span className="material-symbols-outlined text-tertiary-container">notifications_active</span> Recent Notifications
+          <span aria-hidden="true" translate="no" className="material-symbols-outlined text-tertiary">notifications_active</span> Recent Notifications
         </h3>
         <div className="space-y-sm">
           {(notifs ?? []).length === 0 ? (
@@ -165,7 +165,7 @@ export default async function FacultyDashboardPage() {
           ) : (
             (notifs ?? []).map((n) => (
               <div key={n.id} className={`p-sm rounded-lg flex items-start gap-sm ${n.read ? 'bg-surface-container-low' : 'bg-tertiary-fixed/30 border-l-4 border-tertiary-container'}`}>
-                <span className={`material-symbols-outlined mt-xs ${n.type === 'ai' ? 'text-tertiary-container' : n.type === 'approval' ? 'text-primary' : 'text-on-surface-variant'}`}>
+                <span className={`material-symbols-outlined mt-xs ${n.type === 'ai' ? 'text-tertiary' : n.type === 'approval' ? 'text-primary' : 'text-on-surface-variant'}`}>
                   {n.type === 'ai' ? 'auto_awesome' : n.type === 'approval' ? 'fact_check' : n.type === 'task' ? 'task_alt' : 'info'}
                 </span>
                 <div className="flex-1 min-w-0">

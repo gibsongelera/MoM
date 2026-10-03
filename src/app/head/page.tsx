@@ -51,7 +51,7 @@ export default async function HeadDashboardPage() {
         <section className="col-span-12 lg:col-span-8 bg-surface-container-lowest border border-outline-variant rounded-xl overflow-hidden">
           <div className="p-md border-b border-outline-variant flex justify-between items-center">
             <h3 className="font-h3 text-h3 flex items-center gap-sm">
-              <span className="material-symbols-outlined text-primary">pending_actions</span> Awaiting My Signature
+              <span aria-hidden="true" translate="no" className="material-symbols-outlined text-primary">pending_actions</span> Awaiting My Signature
             </h3>
           </div>
           <div className="divide-y divide-outline-variant">
@@ -62,7 +62,7 @@ export default async function HeadDashboardPage() {
                 <div key={m.id} className="p-md flex items-center justify-between hover:bg-surface-container-low transition-colors">
                   <div className="flex items-center gap-md">
                     <div className="w-10 h-10 rounded-lg bg-primary/10 text-primary flex items-center justify-center">
-                      <span className="material-symbols-outlined">description</span>
+                      <span aria-hidden="true" translate="no" className="material-symbols-outlined">description</span>
                     </div>
                     <div>
                       <p className="font-body-md font-semibold">{m.title}</p>
@@ -73,7 +73,7 @@ export default async function HeadDashboardPage() {
                     </div>
                   </div>
                   <span className="bg-primary text-on-primary px-md py-xs rounded-lg shadow-primary-md flex items-center gap-xs font-semibold text-body-sm">
-                    <span className="material-symbols-outlined text-[16px]">draw</span> Review
+                    <span aria-hidden="true" translate="no" className="material-symbols-outlined text-[16px]">draw</span> Review
                   </span>
                 </div>
               ))
@@ -83,7 +83,7 @@ export default async function HeadDashboardPage() {
 
         <section className="col-span-12 lg:col-span-4 bg-surface-container-lowest border border-outline-variant rounded-xl p-md">
           <h3 className="font-h3 text-h3 mb-md flex items-center gap-sm">
-            <span className="material-symbols-outlined text-primary">groups</span> My Team
+            <span aria-hidden="true" translate="no" className="material-symbols-outlined text-primary">groups</span> My Team
           </h3>
           <div className="space-y-sm">
             {teamMembers.slice(0, 6).map((u) => (

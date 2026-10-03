@@ -42,23 +42,23 @@ export default function NewDepartmentForm() {
   return (
     <form onSubmit={handleSubmit} className="bg-surface-container-lowest border border-outline-variant rounded-xl p-md grid grid-cols-1 md:grid-cols-5 gap-sm items-end">
       <div className="md:col-span-2">
-        <label className="font-label-caps text-label-caps text-on-surface-variant">Name</label>
-        <input value={name} onChange={(e) => setName(e.target.value)} placeholder="College of Information and Computing Sciences" className="w-full rounded-lg border-outline-variant bg-surface-container mt-xs font-body-sm" />
+        <label htmlFor="dept-name" className="font-label-caps text-label-caps text-on-surface-variant">Name</label>
+        <input id="dept-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="College of Information and Computing Sciences" className="w-full rounded-lg border-outline-variant bg-surface-container mt-xs font-body-sm" />
       </div>
       <div>
-        <label className="font-label-caps text-label-caps text-on-surface-variant">Short code</label>
-        <input value={short} onChange={(e) => setShort(e.target.value)} placeholder="CICS" className="w-full rounded-lg border-outline-variant bg-surface-container mt-xs font-body-sm" />
+        <label htmlFor="dept-short" className="font-label-caps text-label-caps text-on-surface-variant">Short code</label>
+        <input id="dept-short" value={short} onChange={(e) => setShort(e.target.value)} placeholder="CICS" className="w-full rounded-lg border-outline-variant bg-surface-container mt-xs font-body-sm" />
       </div>
       <div>
-        <label className="font-label-caps text-label-caps text-on-surface-variant">Type</label>
-        <select value={type} onChange={(e) => setType(e.target.value as 'college' | 'office')} className="w-full rounded-lg border-outline-variant bg-surface-container mt-xs font-body-sm">
+        <label htmlFor="dept-type" className="font-label-caps text-label-caps text-on-surface-variant">Type</label>
+        <select id="dept-type" value={type} onChange={(e) => setType(e.target.value as 'college' | 'office')} className="w-full rounded-lg border-outline-variant bg-surface-container mt-xs font-body-sm">
           <option value="college">College</option>
           <option value="office">Office</option>
         </select>
       </div>
       <div>
-        <label className="font-label-caps text-label-caps text-on-surface-variant">Office location</label>
-        <input value={officeLocation} onChange={(e) => setOfficeLocation(e.target.value)} className="w-full rounded-lg border-outline-variant bg-surface-container mt-xs font-body-sm" />
+        <label htmlFor="dept-location" className="font-label-caps text-label-caps text-on-surface-variant">Office location</label>
+        <input id="dept-location" value={officeLocation} onChange={(e) => setOfficeLocation(e.target.value)} className="w-full rounded-lg border-outline-variant bg-surface-container mt-xs font-body-sm" />
       </div>
       <button type="submit" disabled={saving} className="bg-primary text-on-primary px-md py-sm rounded-lg shadow-primary-md font-semibold disabled:opacity-60 h-fit">
         {saving ? 'Adding...' : 'Add Department'}

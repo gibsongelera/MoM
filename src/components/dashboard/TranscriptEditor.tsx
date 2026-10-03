@@ -110,14 +110,15 @@ export default function TranscriptEditor({
                   {editingSpeaker === id ? (
                     <>
                       <input
+                        aria-label="Speaker name"
                         autoFocus
                         value={draftName}
                         onChange={(e) => setDraftName(e.target.value)}
                         onKeyDown={(e) => e.key === 'Enter' && saveSpeakerName(id)}
                         className="w-32 rounded-md border-outline-variant bg-surface-container-lowest text-body-sm py-0"
                       />
-                      <button onClick={() => saveSpeakerName(id)} disabled={savingSpeaker} className="text-primary">
-                        <span className="material-symbols-outlined text-[18px]">check</span>
+                      <button type="button" aria-label="Save speaker name" onClick={() => saveSpeakerName(id)} disabled={savingSpeaker} className="flex h-8 w-8 items-center justify-center rounded-full text-primary hover:bg-primary/10">
+                        <span aria-hidden="true" translate="no" className="material-symbols-outlined text-[18px]">check</span>
                       </button>
                     </>
                   ) : (
@@ -128,7 +129,7 @@ export default function TranscriptEditor({
                       }}
                       className="font-body-sm font-semibold flex items-center gap-xs"
                     >
-                      {nameFor(id, id)} <span className="material-symbols-outlined text-[14px] text-on-surface-variant">edit</span>
+                      {nameFor(id, id)} <span aria-hidden="true" translate="no" className="material-symbols-outlined text-[14px] text-on-surface-variant">edit</span>
                     </button>
                   )}
                 </div>
@@ -171,13 +172,14 @@ export default function TranscriptEditor({
           </div>
           <form onSubmit={postComment} className="flex gap-xs">
             <input
+              aria-label="Add a comment"
               value={commentText}
               onChange={(e) => setCommentText(e.target.value)}
-              placeholder="Add a comment..."
+              placeholder="Add a comment…"
               className="flex-1 rounded-lg border-outline-variant bg-surface-container font-body-sm"
             />
-            <button type="submit" disabled={postingComment} className="bg-primary text-on-primary px-md rounded-lg shadow-primary-md disabled:opacity-60">
-              <span className="material-symbols-outlined text-[18px]">send</span>
+            <button type="submit" aria-label="Post comment" disabled={postingComment} className="bg-primary text-on-primary px-md rounded-lg shadow-primary-md disabled:opacity-60">
+              <span aria-hidden="true" translate="no" className="material-symbols-outlined text-[18px]">send</span>
             </button>
           </form>
         </section>

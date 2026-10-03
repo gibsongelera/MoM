@@ -95,7 +95,7 @@ export default function LandingPage() {
       <nav className="fixed top-0 left-0 right-0 flex justify-between items-center px-lg py-sm w-full bg-surface/80 backdrop-blur-md border-b border-outline-variant z-50 shadow-sm">
         <div className="flex items-center gap-sm">
           <div className="w-9 h-9 rounded-full bg-primary text-on-primary flex items-center justify-center shadow-primary-md">
-            <span className="material-symbols-outlined" style={{ fontVariationSettings: "'FILL' 1" }}>
+            <span aria-hidden="true" translate="no" className="material-symbols-outlined" style={{ fontVariationSettings: "'FILL' 1" }}>
               account_balance
             </span>
           </div>
@@ -150,7 +150,7 @@ export default function LandingPage() {
       >
         <div className="lg:w-1/2 flex flex-col gap-lg z-10">
           <div className="inline-flex items-center gap-sm bg-tertiary-fixed text-on-tertiary-fixed-variant px-sm py-xs rounded-full font-label-caps text-label-caps w-max">
-            <span className="material-symbols-outlined text-[16px]">auto_awesome</span>
+            <span aria-hidden="true" translate="no" className="material-symbols-outlined text-[16px]">auto_awesome</span>
             <span className="uppercase">AI-powered institutional governance</span>
           </div>
           <h1 className="font-display text-display text-on-background leading-[1.1]">
@@ -166,13 +166,13 @@ export default function LandingPage() {
               href="/login"
               className="bg-primary text-on-primary font-body-md text-body-md px-lg py-md rounded-lg shadow-primary-lg hover:opacity-90 transition-all flex items-center gap-sm"
             >
-              Try the Demo <span className="material-symbols-outlined">arrow_forward</span>
+              Try the Demo <span aria-hidden="true" translate="no" className="material-symbols-outlined">arrow_forward</span>
             </Link>
             <a
               href="#workflow"
               className="border border-primary text-primary font-body-md text-body-md px-lg py-md rounded-lg hover:bg-primary-fixed/30 transition-all flex items-center gap-sm"
             >
-              <span className="material-symbols-outlined">play_circle</span> See Workflow
+              <span aria-hidden="true" translate="no" className="material-symbols-outlined">play_circle</span> See Workflow
             </a>
           </div>
           <ul className="flex flex-wrap gap-lg pt-md">
@@ -215,7 +215,7 @@ export default function LandingPage() {
               </div>
               <div className="border-l-2 border-primary pl-md py-xs bg-primary/5 rounded-r-lg">
                 <div className="font-label-caps text-label-caps text-primary mb-xs flex items-center gap-xs">
-                  <span className="material-symbols-outlined text-[14px]">auto_awesome</span>
+                  <span aria-hidden="true" translate="no" className="material-symbols-outlined text-[14px]">auto_awesome</span>
                   Action Item Detected
                 </div>
                 <p className="font-body-sm text-body-sm text-on-surface">
@@ -291,7 +291,7 @@ export default function LandingPage() {
                 className="bg-surface-container-lowest border border-outline-variant rounded-xl p-lg"
               >
                 <div className="w-12 h-12 bg-primary text-on-primary rounded-lg flex items-center justify-center mb-md shadow-primary-md">
-                  <span className="material-symbols-outlined">{r.icon}</span>
+                  <span aria-hidden="true" translate="no" className="material-symbols-outlined">{r.icon}</span>
                 </div>
                 <h3 className="font-h3 text-h3 mb-xs">{r.title}</h3>
                 <p className="font-caption text-caption text-on-surface-variant mb-sm">{r.office}</p>
@@ -323,7 +323,7 @@ export default function LandingPage() {
               >
                 <span
                   className={`material-symbols-outlined ${
-                    w.gold ? 'text-tertiary-container' : 'text-primary'
+                    w.gold ? 'text-tertiary' : 'text-primary'
                   } text-[36px]`}
                 >
                   {w.icon}

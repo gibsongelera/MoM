@@ -144,7 +144,7 @@ export default function ProfileForm({
     <div className="grid grid-cols-12 gap-md">
       <section className="col-span-12 md:col-span-5 bg-surface-container-lowest border border-outline-variant rounded-xl p-lg">
         <h3 className="font-h3 text-h3 mb-md flex items-center gap-sm">
-          <span className="material-symbols-outlined text-primary">account_circle</span> Profile Photo
+          <span aria-hidden="true" translate="no" className="material-symbols-outlined text-primary">account_circle</span> Profile Photo
         </h3>
         <div className="flex flex-col items-center">
           <div className="mb-md">
@@ -167,7 +167,7 @@ export default function ProfileForm({
             onClick={() => fileInputRef.current?.click()}
             className="w-full border-2 border-dashed border-outline-variant rounded-xl p-md text-center hover:border-primary hover:bg-primary/5 cursor-pointer transition-colors"
           >
-            <span className="material-symbols-outlined text-on-surface-variant text-[40px]">upload</span>
+            <span aria-hidden="true" translate="no" className="material-symbols-outlined text-on-surface-variant text-[40px]">upload</span>
             <p className="font-body-sm mt-xs">
               Click to choose <span className="text-primary font-semibold">an image</span>
             </p>
@@ -175,6 +175,7 @@ export default function ProfileForm({
           </button>
           <input
             ref={fileInputRef}
+            aria-label="Choose a profile photo"
             type="file"
             accept="image/*"
             className="hidden"
@@ -190,7 +191,7 @@ export default function ProfileForm({
               onClick={handleRemovePhoto}
               className="mt-sm text-error hover:underline font-label-caps text-label-caps"
             >
-              <span className="material-symbols-outlined text-[14px] align-middle">delete</span> Remove photo
+              <span aria-hidden="true" translate="no" className="material-symbols-outlined text-[14px] align-middle">delete</span> Remove photo
             </button>
           ) : null}
         </div>
@@ -198,7 +199,7 @@ export default function ProfileForm({
 
       <section className="col-span-12 md:col-span-7 bg-surface-container-lowest border border-outline-variant rounded-xl p-lg">
         <h3 className="font-h3 text-h3 mb-md flex items-center gap-sm">
-          <span className="material-symbols-outlined text-primary">badge</span> Identity
+          <span aria-hidden="true" translate="no" className="material-symbols-outlined text-primary">badge</span> Identity
         </h3>
 
         <form className="space-y-md" onSubmit={handleSubmit}>
@@ -230,23 +231,23 @@ export default function ProfileForm({
 
           <div className="grid grid-cols-2 gap-md">
             <div>
-              <label className="font-label-caps text-label-caps text-on-surface-variant">Role</label>
-              <input value={ROLE_LABEL[user.role]} readOnly className="w-full rounded-lg border-outline-variant bg-surface-container font-body-md mt-xs" />
+              <label htmlFor="f-role" className="font-label-caps text-label-caps text-on-surface-variant">Role</label>
+              <input id="f-role" value={ROLE_LABEL[user.role]} readOnly className="w-full rounded-lg border-outline-variant bg-surface-container font-body-md mt-xs" />
             </div>
             <div>
-              <label className="font-label-caps text-label-caps text-on-surface-variant">Department</label>
-              <input value={departmentLabel} readOnly className="w-full rounded-lg border-outline-variant bg-surface-container font-body-md mt-xs" />
+              <label htmlFor="f-dept" className="font-label-caps text-label-caps text-on-surface-variant">Department</label>
+              <input id="f-dept" value={departmentLabel} readOnly className="w-full rounded-lg border-outline-variant bg-surface-container font-body-md mt-xs" />
             </div>
           </div>
 
           <div>
-            <label className="font-label-caps text-label-caps text-on-surface-variant">Email</label>
-            <input value={user.email} readOnly className="w-full rounded-lg border-outline-variant bg-surface-container font-body-md mt-xs" />
+            <label htmlFor="f-email" className="font-label-caps text-label-caps text-on-surface-variant">Email</label>
+            <input id="f-email" value={user.email} readOnly className="w-full rounded-lg border-outline-variant bg-surface-container font-body-md mt-xs" />
             <p className="font-caption text-caption text-on-surface-variant mt-xs">Contact your administrator to change your email or department.</p>
           </div>
 
           <div className="bg-tertiary-fixed/40 border border-tertiary-container/40 rounded-lg p-sm flex gap-sm">
-            <span className="material-symbols-outlined text-tertiary">lock</span>
+            <span aria-hidden="true" translate="no" className="material-symbols-outlined text-tertiary">lock</span>
             <div>
               <p className="font-body-sm font-semibold">Privacy by design</p>
               <p className="font-caption text-caption text-on-surface-variant">

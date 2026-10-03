@@ -100,20 +100,20 @@ export default function DelegateBoard({
   return (
     <>
       <form onSubmit={handleCreate} className="bg-surface-container-lowest border border-outline-variant rounded-xl p-md mb-lg grid grid-cols-1 md:grid-cols-5 gap-sm items-end">
-        <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Task title" className="md:col-span-2 rounded-lg border-outline-variant bg-surface-container font-body-sm" />
-        <select value={assigneeId} onChange={(e) => setAssigneeId(e.target.value)} className="rounded-lg border-outline-variant bg-surface-container font-body-sm">
+        <input aria-label="Task title" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Task title" className="md:col-span-2 rounded-lg border-outline-variant bg-surface-container font-body-sm" />
+        <select aria-label="Assign to" value={assigneeId} onChange={(e) => setAssigneeId(e.target.value)} className="rounded-lg border-outline-variant bg-surface-container font-body-sm">
           {team.map((m) => (
             <option key={m.id} value={m.id}>
               {m.name}
             </option>
           ))}
         </select>
-        <select value={priority} onChange={(e) => setPriority(e.target.value)} className="rounded-lg border-outline-variant bg-surface-container font-body-sm">
+        <select aria-label="Priority" value={priority} onChange={(e) => setPriority(e.target.value)} className="rounded-lg border-outline-variant bg-surface-container font-body-sm">
           <option value="low">Low</option>
           <option value="medium">Medium</option>
           <option value="high">High</option>
         </select>
-        <input type="date" value={deadline} onChange={(e) => setDeadline(e.target.value)} className="rounded-lg border-outline-variant bg-surface-container font-body-sm" />
+        <input aria-label="Deadline" type="date" value={deadline} onChange={(e) => setDeadline(e.target.value)} className="rounded-lg border-outline-variant bg-surface-container font-body-sm" />
         <button type="submit" disabled={creating} className="md:col-span-5 justify-self-end bg-primary text-on-primary px-md py-sm rounded-lg shadow-primary-md font-semibold disabled:opacity-60">
           {creating ? 'Delegating...' : 'Delegate Task'}
         </button>
@@ -141,18 +141,22 @@ export default function DelegateBoard({
                       </div>
                       <div className="flex justify-between mt-sm">
                         <button
+                          type="button"
+                          aria-label={`Move "${t.title}" back`}
                           onClick={() => move(t, -1)}
                           disabled={colIdx === 0 || pendingId === t.id}
-                          className="text-on-surface-variant hover:text-primary disabled:opacity-30 text-body-sm"
+                          className="flex h-8 w-8 items-center justify-center rounded-lg text-on-surface-variant hover:bg-surface-container hover:text-primary disabled:opacity-30"
                         >
-                          <span className="material-symbols-outlined text-[18px]">arrow_back</span>
+                          <span aria-hidden="true" translate="no" className="material-symbols-outlined text-[18px]">arrow_back</span>
                         </button>
                         <button
+                          type="button"
+                          aria-label={`Move "${t.title}" forward`}
                           onClick={() => move(t, 1)}
                           disabled={colIdx === COLUMNS.length - 1 || pendingId === t.id}
-                          className="text-on-surface-variant hover:text-primary disabled:opacity-30 text-body-sm"
+                          className="flex h-8 w-8 items-center justify-center rounded-lg text-on-surface-variant hover:bg-surface-container hover:text-primary disabled:opacity-30"
                         >
-                          <span className="material-symbols-outlined text-[18px]">arrow_forward</span>
+                          <span aria-hidden="true" translate="no" className="material-symbols-outlined text-[18px]">arrow_forward</span>
                         </button>
                       </div>
                     </div>

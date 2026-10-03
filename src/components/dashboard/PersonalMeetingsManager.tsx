@@ -88,19 +88,19 @@ export default function PersonalMeetingsManager({ initial }: { initial: Personal
       <form onSubmit={handleSubmit} className="bg-surface-container-lowest border border-outline-variant rounded-xl p-md mb-lg space-y-sm">
         <h3 className="font-h3 text-h3">Log a Personal Meeting</h3>
         <div className="grid grid-cols-1 md:grid-cols-4 gap-sm">
-          <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Title (e.g. Thesis advising - Dela Cruz)" className="md:col-span-2 rounded-lg border-outline-variant bg-surface-container font-body-sm" />
-          <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="rounded-lg border-outline-variant bg-surface-container font-body-sm" />
-          <input type="time" value={time} onChange={(e) => setTime(e.target.value)} className="rounded-lg border-outline-variant bg-surface-container font-body-sm" />
+          <input aria-label="Title" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Title (e.g. Thesis advising - Dela Cruz)" className="md:col-span-2 rounded-lg border-outline-variant bg-surface-container font-body-sm" />
+          <input aria-label="Date" type="date" value={date} onChange={(e) => setDate(e.target.value)} className="rounded-lg border-outline-variant bg-surface-container font-body-sm" />
+          <input aria-label="Time" type="time" value={time} onChange={(e) => setTime(e.target.value)} className="rounded-lg border-outline-variant bg-surface-container font-body-sm" />
         </div>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-sm">
-          <select value={type} onChange={(e) => setType(e.target.value)} className="rounded-lg border-outline-variant bg-surface-container font-body-sm">
+          <select aria-label="Type" value={type} onChange={(e) => setType(e.target.value)} className="rounded-lg border-outline-variant bg-surface-container font-body-sm">
             <option>Advising</option>
             <option>Consultation</option>
             <option>One-on-one</option>
             <option>Other</option>
           </select>
-          <input value={attendees} onChange={(e) => setAttendees(e.target.value)} placeholder="Attendees" className="rounded-lg border-outline-variant bg-surface-container font-body-sm" />
-          <input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Notes" className="rounded-lg border-outline-variant bg-surface-container font-body-sm" />
+          <input aria-label="Attendees" value={attendees} onChange={(e) => setAttendees(e.target.value)} placeholder="Attendees" className="rounded-lg border-outline-variant bg-surface-container font-body-sm" />
+          <input aria-label="Notes" value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Notes" className="rounded-lg border-outline-variant bg-surface-container font-body-sm" />
         </div>
         {error ? <p className="text-error font-body-sm">{error}</p> : null}
         <div className="flex justify-end">

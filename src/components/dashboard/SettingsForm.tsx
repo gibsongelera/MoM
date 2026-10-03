@@ -70,32 +70,36 @@ export default function SettingsForm({ initial }: { initial: AppSettingsRow }) {
 
       <section className="bg-surface-container-lowest border border-outline-variant rounded-xl p-md grid grid-cols-1 md:grid-cols-2 gap-md">
         <div>
-          <label className="font-label-caps text-label-caps text-on-surface-variant">Institution name</label>
+          <label htmlFor="s-inst" className="font-label-caps text-label-caps text-on-surface-variant">Institution name</label>
           <input
+            id="s-inst"
             value={values.institution_name}
             onChange={(e) => set('institution_name', e.target.value)}
             className="w-full rounded-lg border-outline-variant bg-surface-container mt-xs font-body-sm"
           />
         </div>
         <div>
-          <label className="font-label-caps text-label-caps text-on-surface-variant">Short name</label>
+          <label htmlFor="s-short" className="font-label-caps text-label-caps text-on-surface-variant">Short name</label>
           <input
+            id="s-short"
             value={values.institution_short}
             onChange={(e) => set('institution_short', e.target.value)}
             className="w-full rounded-lg border-outline-variant bg-surface-container mt-xs font-body-sm"
           />
         </div>
         <div>
-          <label className="font-label-caps text-label-caps text-on-surface-variant">Default language</label>
+          <label htmlFor="s-lang" className="font-label-caps text-label-caps text-on-surface-variant">Default language</label>
           <input
+            id="s-lang"
             value={values.default_language}
             onChange={(e) => set('default_language', e.target.value)}
             className="w-full rounded-lg border-outline-variant bg-surface-container mt-xs font-body-sm"
           />
         </div>
         <div>
-          <label className="font-label-caps text-label-caps text-on-surface-variant">Retention (days)</label>
+          <label htmlFor="s-retention" className="font-label-caps text-label-caps text-on-surface-variant">Retention (days)</label>
           <input
+            id="s-retention"
             type="number"
             min={1}
             value={values.retention_days}
@@ -106,14 +110,15 @@ export default function SettingsForm({ initial }: { initial: AppSettingsRow }) {
       </section>
 
       <section className="bg-surface-container-lowest border border-outline-variant rounded-xl p-md">
-        <h3 className="font-h3 text-h3 mb-sm flex items-center gap-sm">
-          <span className="material-symbols-outlined text-primary">privacy_tip</span> Data Processing Notice
+        <h3 id="s-notice" className="font-h3 text-h3 mb-sm flex items-center gap-sm">
+          <span aria-hidden="true" translate="no" className="material-symbols-outlined text-primary">privacy_tip</span> Data Processing Notice
         </h3>
         <p className="font-caption text-caption text-on-surface-variant mb-sm">
           Shown to users to disclose what actually happens to recordings and transcripts. Keep this accurate - it names real
           processors (Supabase, ElevenLabs, Anthropic), not a placeholder.
         </p>
         <textarea
+          aria-labelledby="s-notice"
           value={values.data_processing_notice}
           onChange={(e) => set('data_processing_notice', e.target.value)}
           rows={4}

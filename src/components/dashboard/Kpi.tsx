@@ -17,7 +17,7 @@ export function Kpi({
       <div className={`absolute top-0 right-0 w-1 h-full ${tone === 'primary' ? 'bg-primary' : 'bg-tertiary-container'}`} />
       <div className="flex items-center justify-between mb-sm">
         <span className="font-label-caps text-label-caps text-on-surface-variant uppercase">{label}</span>
-        <span className={`material-symbols-outlined ${tone === 'primary' ? 'text-primary' : 'text-tertiary-container'}`}>
+        <span className={`material-symbols-outlined ${tone === 'primary' ? 'text-primary' : 'text-tertiary'}`}>
           {icon}
         </span>
       </div>

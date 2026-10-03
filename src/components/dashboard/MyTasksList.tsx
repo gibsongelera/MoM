@@ -62,7 +62,7 @@ export default function MyTasksList({ tasks }: { tasks: MyTaskRow[] }) {
           <div key={t.id} className="p-md flex items-center justify-between gap-md hover:bg-surface-container-low transition-colors">
             <div className="flex items-start gap-md flex-1 min-w-0">
               <div className="w-10 h-10 rounded-lg bg-primary/10 text-primary flex items-center justify-center shrink-0">
-                <span className="material-symbols-outlined">checklist</span>
+                <span aria-hidden="true" translate="no" className="material-symbols-outlined">checklist</span>
               </div>
               <div className="flex-1 min-w-0">
                 <p className="font-body-md font-semibold">{t.title}</p>
@@ -75,7 +75,7 @@ export default function MyTasksList({ tasks }: { tasks: MyTaskRow[] }) {
                   <span className="pill pill-regular capitalize">{t.priority}</span>
                   {t.deadline ? (
                     <span className={`font-caption text-caption ${overdue ? 'text-error font-semibold' : 'text-on-surface-variant'}`}>
-                      <span className="material-symbols-outlined text-[12px] align-middle">schedule</span> {t.deadline}
+                      <span aria-hidden="true" translate="no" className="material-symbols-outlined text-[12px] align-middle">schedule</span> {t.deadline}
                     </span>
                   ) : null}
                 </div>

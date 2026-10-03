@@ -86,12 +86,12 @@ export default async function AdminDashboardPage() {
   const healthLabel = jobBuckets.failed > 0 ? 'ATTENTION' : totalJobs === 0 ? 'IDLE' : 'OPERATIONAL';
 
   function iconFor(action: string): [string, string] {
-    if (action.includes('transcri')) return ['auto_awesome', 'text-tertiary-container'];
+    if (action.includes('transcri')) return ['auto_awesome', 'text-tertiary'];
     if (action.includes('approve') || action.includes('sign')) return ['check_circle', 'text-success'];
     if (action.includes('login') || action.includes('logout')) return ['login', 'text-primary'];
     if (action.includes('role') || action.includes('user')) return ['group_add', 'text-secondary'];
     if (action.includes('recording')) return ['mic', 'text-primary'];
-    if (action.includes('task')) return ['task_alt', 'text-tertiary-container'];
+    if (action.includes('task')) return ['task_alt', 'text-tertiary'];
     return ['info', 'text-on-surface-variant'];
   }
 
@@ -118,11 +118,11 @@ export default async function AdminDashboardPage() {
           <div className="absolute top-0 left-0 w-1 h-full bg-tertiary-container" />
           <div className="flex justify-between items-center mb-md">
             <h3 className="font-h3 text-h3 flex items-center gap-sm">
-              <span className="material-symbols-outlined text-tertiary-container">auto_awesome</span> AI Transcription
+              <span aria-hidden="true" translate="no" className="material-symbols-outlined text-tertiary">auto_awesome</span> AI Transcription
               Pipeline
             </h3>
             <span className="bg-tertiary-fixed text-on-tertiary-fixed-variant font-label-caps text-label-caps px-sm py-xs rounded-full flex items-center gap-xs">
-              <span className="material-symbols-outlined text-[14px]">bolt</span> {healthLabel}
+              <span aria-hidden="true" translate="no" className="material-symbols-outlined text-[14px]">bolt</span> {healthLabel}
             </span>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-md">
@@ -150,7 +150,7 @@ export default async function AdminDashboardPage() {
         </div>
 
         <div className="col-span-12 lg:col-span-4 bg-gradient-to-br from-primary to-primary-container text-on-primary rounded-xl p-md shadow-primary-md relative overflow-hidden">
-          <span className="material-symbols-outlined absolute -right-4 -bottom-4 text-[120px] opacity-10">group</span>
+          <span aria-hidden="true" translate="no" className="material-symbols-outlined absolute -right-4 -bottom-4 text-[120px] opacity-10">group</span>
           <p className="font-caption text-caption opacity-80 uppercase tracking-wider">Active accounts</p>
           <h2 className="font-display text-display font-bold mt-xs">{activeUsers}</h2>
           <p className="font-body-sm opacity-90 mt-xs">of {users.length} total accounts</p>
