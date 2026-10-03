@@ -2,17 +2,21 @@
 
 Project ref: `iurnobtqyrdvanhxghck`
 
-## 1. Add two secrets to `.env.local`
+## 1. Add the database settings to `.env.local`
 
 ```
 DATABASE_URL=postgresql://postgres:<db-password>@db.iurnobtqyrdvanhxghck.supabase.co:5432/postgres
+SUPABASE_POOLER_HOST=aws-0-ap-southeast-1.pooler.supabase.com
 SUPABASE_SERVICE_ROLE_KEY=<service_role key>
 ```
+
+The direct host is IPv6-only; with `SUPABASE_POOLER_HOST` set, the database
+scripts connect through the Supavisor session pooler with the same password.
 
 - **`DATABASE_URL`** — Supabase dashboard → **Connect** → *Direct connection*. Only
   the migration runner uses it; the app never does.
 - **`SUPABASE_SERVICE_ROLE_KEY`** — dashboard → **Project Settings → API Keys →
-  `service_role`**. Only `scripts/seed-demo.mjs` uses it. It bypasses RLS, so it
+  `service_role`**. The seed scripts, the transcription webhook and the email-invitation route use it (server-only). It bypasses RLS, so it
   must never be imported into application code or prefixed `NEXT_PUBLIC_`.
 
 Both are already listed in `.gitignore` via `.env*.local`.
@@ -29,9 +33,20 @@ waits forever for a link nobody can click.
 ## 3. Apply the schema, then seed
 
 ```bash
+npm run db:backup           # logical backup first (backups/, gitignored)
+npm run db:verify:pending   # dry-run: applies pending files in a rolled-back transaction + RLS checks
 npm run db:push
+npm run db:verify           # 32 impersonated RLS checks, always rolled back
 npm run db:seed
+npm run db:seed:scenario    # the panel demo scenario (docs/demo-scenario.md)
 ```
+
+Migrations: `0001`–`0010` core schema, RLS, functions, storage, transcription;
+`0011_amend_minutes_body` + `0011_smartmin_app_fields` (attendance, paper notes),
+`0012` RSVPs, `0013` minutes versions/motions, `0014` realtime notifications,
+`0015` security hardening, `0016` meeting people (guests, typed panel,
+emergency meetings, notifications), `0017` meeting attachments.
+Rollback for 0015–0017: `rollback/0015-0017_down.sql`.
 
 `db:push` runs each file in `migrations/` once, inside its own transaction, and
 records it in `schema_migrations`. Re-running only applies what is new. To force

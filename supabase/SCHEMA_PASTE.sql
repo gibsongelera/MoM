@@ -17,6 +17,13 @@
 --   0009_transcription_rls.sql
 --   0010_minutes_ai_action_items.sql
 --   0011_amend_minutes_body.sql
+--   0011_smartmin_app_fields.sql
+--   0012_meeting_rsvps.sql
+--   0013_governance_extras.sql
+--   0014_realtime.sql
+--   0015_security_hardening.sql
+--   0016_meeting_people.sql
+--   0017_meeting_attachments.sql
 --
 -- Usage: paste this whole file into the Supabase SQL editor and run it once, on
 -- a project where these objects do not exist yet. The editor sends the script as
@@ -1823,6 +1830,1117 @@ grant execute on function amend_minutes(uuid, text, text, text, jsonb, text) to 
 -- ==========================================================================
 
 -- ==========================================================================
+-- BEGIN 0011_smartmin_app_fields.sql
+-- ==========================================================================
+
+-- ============================================================================
+-- Additive fields for the SmartMin app UI (main working tree).
+--
+-- The 0001-0010 schema covers the core governance model. The 33-page UI on
+-- `main` also uses a few fields that were never modelled: Phase 2 key
+-- decisions, Phase 3 signed attendance capture, Phase 4 handwritten panel
+-- notes, Phase 5 document translation, and the minutes' explicit action-item
+-- task references. All additive — no existing table or column is altered.
+-- ============================================================================
+
+-- Phase 2 — AI-extracted key decisions on a transcript.
+alter table transcripts
+  add column if not exists key_decisions text[] not null default '{}';
+
+-- Minutes: explicit action-item task ids, handwritten notes, translation state.
+alter table minutes
+  add column if not exists action_items text[] not null default '{}';
+alter table minutes
+  add column if not exists paper_notes jsonb not null default '[]'::jsonb;
+alter table minutes
+  add column if not exists translated_to text;
+
+-- Phase 3 — attendance capture with per-attendee signatures.
+-- records: [{ userId, name, role, department, present, signatureDataUrl, signedAt }]
+create table if not exists attendance (
+  id uuid primary key default gen_random_uuid(),
+  meeting_id uuid not null unique references meetings (id) on delete cascade,
+  started_at bigint,
+  records jsonb not null default '[]'::jsonb,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists attendance_meeting_idx on attendance (meeting_id);
+
+drop trigger if exists attendance_set_updated_at on attendance;
+create trigger attendance_set_updated_at
+  before update on attendance
+  for each row execute function set_updated_at();
+
+alter table attendance enable row level security;
+
+-- Visible with the meeting; written by whoever may edit its documents
+-- (secretary / chair / dept head / admin) — same rule as transcripts/minutes.
+drop policy if exists attendance_select on attendance;
+create policy attendance_select on attendance
+  for select to authenticated using (sm_can_see_meeting(meeting_id));
+
+drop policy if exists attendance_write on attendance;
+create policy attendance_write on attendance
+  for all to authenticated
+  using (sm_can_edit_meeting_docs(meeting_id))
+  with check (sm_can_edit_meeting_docs(meeting_id));
+
+grant select, insert, update, delete on attendance to authenticated, service_role;
+
+-- ==========================================================================
+-- END 0011_smartmin_app_fields.sql
+-- ==========================================================================
+
+-- ==========================================================================
+-- BEGIN 0012_meeting_rsvps.sql
+-- ==========================================================================
+
+-- Phase 5 — participant RSVP on a meeting (accept/decline an invitation).
+-- Faculty cannot UPDATE meetings under RLS, so RSVP goes through a SECURITY
+-- DEFINER function gated on meeting visibility, like the comment RPCs.
+
+alter table meetings add column if not exists rsvps jsonb not null default '{}'::jsonb;
+
+create or replace function set_meeting_rsvp(p_meeting_id uuid, p_status text)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_result jsonb;
+begin
+  if p_status not in ('accepted', 'declined', 'invited') then
+    raise exception 'Invalid RSVP status: %', p_status;
+  end if;
+  if not sm_can_see_meeting(p_meeting_id) then
+    raise exception 'Not permitted to RSVP to this meeting';
+  end if;
+
+  update meetings
+  set rsvps = coalesce(rsvps, '{}'::jsonb) || jsonb_build_object(auth.uid()::text, p_status)
+  where id = p_meeting_id
+  returning rsvps into v_result;
+
+  return v_result;
+end;
+$$;
+
+grant execute on function set_meeting_rsvp(uuid, text) to authenticated;
+
+-- ==========================================================================
+-- END 0012_meeting_rsvps.sql
+-- ==========================================================================
+
+-- ==========================================================================
+-- BEGIN 0013_governance_extras.sql
+-- ==========================================================================
+
+-- Governance extras for the app UI:
+--   minutes.versions : snapshot history (versioning / diff, rec #13)
+--   minutes.motions  : motions + roll-call vote tallies (rec #8)
+-- Both additive jsonb; nothing existing is altered.
+
+alter table minutes
+  add column if not exists versions jsonb not null default '[]'::jsonb;
+alter table minutes
+  add column if not exists motions jsonb not null default '[]'::jsonb;
+
+-- ==========================================================================
+-- END 0013_governance_extras.sql
+-- ==========================================================================
+
+-- ==========================================================================
+-- BEGIN 0014_realtime.sql
+-- ==========================================================================
+
+-- Enable Supabase Realtime for notifications so the topbar bell updates live
+-- (rec #2). RLS still applies to realtime, so users only receive their own rows.
+do $$
+begin
+  if exists (select 1 from pg_publication where pubname = 'supabase_realtime')
+     and not exists (
+       select 1 from pg_publication_tables
+       where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'notifications'
+     )
+  then
+    alter publication supabase_realtime add table public.notifications;
+  end if;
+end $$;
+
+-- ==========================================================================
+-- END 0014_realtime.sql
+-- ==========================================================================
+
+-- ==========================================================================
+-- BEGIN 0015_security_hardening.sql
+-- ==========================================================================
+
+-- ============================================================================
+-- 0015 — Security hardening.
+--
+-- Closes holes found in the Oct 2026 baseline audit:
+--
+--   1. Self-registration privilege escalation. handle_new_user() copied `role`
+--      and `active` straight from client-supplied sign-up metadata, so anyone
+--      could sign up as an active admin with the publishable key.
+--   2. profiles.active was never enforced server-side. An inactive ("pending")
+--      admin was already a full admin under RLS.
+--   3. Forgeable approvals. minutes_update let any editor rewrite signatures,
+--      status and lock columns directly; sign_minutes() trusted a caller-chosen
+--      role label and signed locked documents.
+--   4. Every function was executable by `anon` (Supabase's default grants were
+--      never revoked), and notify_user() let any signed-in user notify anyone
+--      with any text.
+--   5. schema_migrations had no RLS.
+--
+-- Guard triggers below key off `current_user`: a direct PostgREST write runs as
+-- `authenticated`, while the workflow RPCs are SECURITY DEFINER and run as their
+-- owner, and the webhook/seed run as `service_role`. So the guards stop forged
+-- client writes without getting in the way of the sanctioned paths.
+-- ============================================================================
+
+-- ---------------------------------------------------------------------------
+-- 5. Migration bookkeeping is nobody's business but the migrator's.
+-- ---------------------------------------------------------------------------
+alter table if exists public.schema_migrations enable row level security;
+revoke all on table public.schema_migrations from anon, authenticated;
+
+-- ---------------------------------------------------------------------------
+-- 2. Active-aware caller identity.
+--
+-- An inactive account resolves to no role and no department, so every policy
+-- built on these helpers denies it. Rows keyed on auth.uid() alone (own profile,
+-- own notifications) stay readable so the UI can explain "pending approval".
+-- ---------------------------------------------------------------------------
+create or replace function sm_is_active()
+returns boolean
+language sql
+stable
+security definer
+set search_path = public, pg_temp
+as $$
+  select coalesce((select active from profiles where id = auth.uid()), false);
+$$;
+
+create or replace function sm_role()
+returns user_role
+language sql
+stable
+security definer
+set search_path = public, pg_temp
+as $$
+  select role from profiles where id = auth.uid() and active;
+$$;
+
+create or replace function sm_department()
+returns uuid
+language sql
+stable
+security definer
+set search_path = public, pg_temp
+as $$
+  select department_id from profiles where id = auth.uid() and active;
+$$;
+
+create or replace function sm_is_admin()
+returns boolean
+language sql
+stable
+security definer
+set search_path = public, pg_temp
+as $$
+  select coalesce((select role from profiles where id = auth.uid() and active) = 'admin', false);
+$$;
+
+-- Editing rights now also require an active account (an inactive secretary
+-- would otherwise still pass through m.secretary_id = auth.uid()).
+create or replace function sm_can_edit_meeting_docs(p_meeting_id uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public, pg_temp
+as $$
+  select sm_is_active() and exists (
+    select 1
+    from meetings m
+    where m.id = p_meeting_id
+      and (
+        sm_is_admin()
+        or m.secretary_id = auth.uid()
+        or m.chair_id = auth.uid()
+        or (sm_role() in ('head', 'secretary') and m.department_id = sm_department())
+      )
+  );
+$$;
+
+-- The approving head of a department: departments.head_id when that account is
+-- active, otherwise the first active head-role profile in the department.
+create or replace function sm_department_head(p_department_id uuid)
+returns uuid
+language sql
+stable
+security definer
+set search_path = public, pg_temp
+as $$
+  select coalesce(
+    (select d.head_id
+       from departments d
+       join profiles p on p.id = d.head_id and p.active
+      where d.id = p_department_id),
+    (select p.id
+       from profiles p
+      where p.department_id = p_department_id and p.role = 'head' and p.active
+      order by p.created_at
+      limit 1)
+  );
+$$;
+
+-- ---------------------------------------------------------------------------
+-- 1. Sign-ups are always pending faculty. The requested role is recorded for an
+--    administrator to review; it grants nothing by itself.
+-- ---------------------------------------------------------------------------
+alter table profiles add column if not exists requested_role user_role;
+
+create or replace function handle_new_user()
+returns trigger
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_raw text := nullif(new.raw_user_meta_data ->> 'department_id', '');
+  v_requested text := new.raw_user_meta_data ->> 'role';
+  v_dept uuid;
+begin
+  if v_raw is not null then
+    select id into v_dept
+    from departments
+    where id = sm_uuid_or_null(v_raw) or short = upper(v_raw)
+    limit 1;
+  end if;
+
+  insert into profiles (id, name, email, role, requested_role, department_id, position, active, joined_at)
+  values (
+    new.id,
+    coalesce(nullif(new.raw_user_meta_data ->> 'name', ''), split_part(new.email, '@', 1)),
+    new.email,
+    'faculty',
+    case when v_requested in ('admin', 'head', 'secretary', 'faculty')
+         then v_requested::user_role end,
+    v_dept,
+    nullif(new.raw_user_meta_data ->> 'position', ''),
+    false,
+    current_date
+  )
+  on conflict (id) do nothing;
+
+  return new;
+end;
+$$;
+
+-- Role / activation changes are audited by the database, not the client.
+create or replace function audit_profile_privileges()
+returns trigger
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+begin
+  if new.role is distinct from old.role then
+    perform log_audit('user_role_changed', new.email || ': ' || old.role || ' -> ' || new.role);
+  end if;
+  if new.active is distinct from old.active then
+    perform log_audit(case when new.active then 'user_activated' else 'user_deactivated' end, new.email);
+  end if;
+  return null;
+end;
+$$;
+
+drop trigger if exists profiles_audit_privileges on profiles;
+create trigger profiles_audit_privileges
+  after update of role, active on profiles
+  for each row execute function audit_profile_privileges();
+
+-- Departments for the signed-out register form, without exposing the table.
+create or replace function list_departments_public()
+returns table (id uuid, name text, short text, type department_type)
+language sql
+stable
+security definer
+set search_path = public, pg_temp
+as $$
+  select d.id, d.name, d.short, d.type from departments d order by d.type, d.name;
+$$;
+
+-- ---------------------------------------------------------------------------
+-- 3a. Minutes: workflow columns are writable only through the RPCs.
+-- SECURITY INVOKER on purpose: current_user must reflect who issued the write.
+-- ---------------------------------------------------------------------------
+create or replace function guard_minutes_columns()
+returns trigger
+language plpgsql
+set search_path = public, pg_temp
+as $$
+begin
+  if current_user <> 'authenticated' then
+    return new;
+  end if;
+
+  if tg_op = 'INSERT' then
+    new.signatures := '[]'::jsonb;
+    new.comments := '[]'::jsonb;
+    new.amendments := '[]'::jsonb;
+    new.status := 'draft';
+    new.locked_at := null;
+    new.locked_by := null;
+    return new;
+  end if;
+
+  if new.signatures is distinct from old.signatures
+     or new.status is distinct from old.status
+     or new.locked_at is distinct from old.locked_at
+     or new.locked_by is distinct from old.locked_by
+     or new.amendments is distinct from old.amendments
+     or new.comments is distinct from old.comments
+     or new.meeting_id is distinct from old.meeting_id then
+    raise exception 'Signatures, approval status and comments can only change through the approval workflow'
+      using errcode = '42501';
+  end if;
+
+  return new;
+end;
+$$;
+
+drop trigger if exists minutes_guard_columns on minutes;
+create trigger minutes_guard_columns
+  before insert or update on minutes
+  for each row execute function guard_minutes_columns();
+
+-- Transcript comments carry an author; they go through append_transcript_comment().
+create or replace function guard_transcript_columns()
+returns trigger
+language plpgsql
+set search_path = public, pg_temp
+as $$
+begin
+  if current_user = 'authenticated' and new.comments is distinct from old.comments then
+    raise exception 'Comments can only be added through append_transcript_comment()'
+      using errcode = '42501';
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists transcripts_guard_columns on transcripts;
+create trigger transcripts_guard_columns
+  before update on transcripts
+  for each row execute function guard_transcript_columns();
+
+-- ---------------------------------------------------------------------------
+-- 3b. Meetings: the approving chair is the department head, and approval status
+-- is never set directly.
+-- ---------------------------------------------------------------------------
+create or replace function guard_meeting_columns()
+returns trigger
+language plpgsql
+set search_path = public, pg_temp
+as $$
+begin
+  -- Every caller (seed included) gets the department head as the approving
+  -- chair when none was given — without it, routing/approval notifications go
+  -- nowhere and the head's signature never renders.
+  if tg_op = 'INSERT' and new.chair_id is null then
+    new.chair_id := sm_department_head(new.department_id);
+  end if;
+
+  if current_user <> 'authenticated' or sm_is_admin() then
+    return new;
+  end if;
+
+  if tg_op = 'UPDATE' then
+    if new.department_id is distinct from old.department_id then
+      raise exception 'A meeting cannot be moved to another department' using errcode = '42501';
+    end if;
+    if new.secretary_id is distinct from old.secretary_id and sm_role() is distinct from 'head' then
+      raise exception 'Only the department head can reassign the meeting secretary' using errcode = '42501';
+    end if;
+  elsif new.secretary_id is not null and new.secretary_id <> auth.uid() and sm_role() is distinct from 'head' then
+    raise exception 'You can only schedule meetings as their secretary' using errcode = '42501';
+  end if;
+
+  if new.chair_id is not null
+     and (tg_op = 'INSERT' or new.chair_id is distinct from old.chair_id)
+     and new.chair_id is distinct from sm_department_head(new.department_id) then
+    raise exception 'The approving chair must be the department head' using errcode = '42501';
+  end if;
+
+  if new.status in ('pending_approval', 'approved')
+     and (tg_op = 'INSERT' or new.status is distinct from old.status) then
+    raise exception 'Approval status changes go through the minutes workflow' using errcode = '42501';
+  end if;
+
+  return new;
+end;
+$$;
+
+drop trigger if exists meetings_guard_columns on meetings;
+create trigger meetings_guard_columns
+  before insert or update on meetings
+  for each row execute function guard_meeting_columns();
+
+-- ---------------------------------------------------------------------------
+-- 3c. Signing. The signer's capacity is derived on the server; the caller's
+-- label is ignored (kept in the signature only for backward compatibility).
+-- ---------------------------------------------------------------------------
+create or replace function sign_minutes(
+  p_minutes_id uuid,
+  p_role_label text,
+  p_data_url text default null
+)
+returns minutes
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_row minutes;
+  v_meeting meetings;
+  v_locked timestamptz;
+  v_name text;
+  v_is_approver boolean;
+  v_kind text;
+  v_label text;
+  v_sig jsonb;
+  v_kept jsonb;
+begin
+  select m.* into v_meeting
+  from meetings m
+  where m.id = (select meeting_id from minutes where id = p_minutes_id);
+
+  if v_meeting.id is null then
+    raise exception 'Minutes % not found', p_minutes_id;
+  end if;
+
+  if not sm_can_edit_meeting_docs(v_meeting.id) then
+    raise exception 'Not permitted to sign these minutes' using errcode = '42501';
+  end if;
+
+  select locked_at into v_locked from minutes where id = p_minutes_id;
+  if v_locked is not null then
+    raise exception 'These minutes are locked. Amend them before signing again.' using errcode = '42501';
+  end if;
+
+  if p_data_url is not null and p_data_url <> ''
+     and (p_data_url !~ '^data:image/png;base64,[A-Za-z0-9+/=]+$' or length(p_data_url) > 400000) then
+    raise exception 'Signature must be a PNG image under 300 KB' using errcode = '22023';
+  end if;
+
+  v_is_approver := sm_is_admin()
+    or v_meeting.chair_id = auth.uid()
+    or (sm_role() = 'head' and v_meeting.department_id = sm_department());
+  v_kind := case when v_is_approver then 'approver' else 'secretary' end;
+  v_label := case
+    when v_is_approver and sm_role() = 'admin' and v_meeting.chair_id is distinct from auth.uid() then 'Administrator'
+    when v_is_approver then 'Head'
+    else 'Faculty Secretary'
+  end;
+
+  select name into v_name from profiles where id = auth.uid();
+
+  v_sig := jsonb_build_object(
+    'userId', auth.uid(),
+    'name', coalesce(v_name, 'Unknown'),
+    'role', v_label,
+    'kind', v_kind,
+    'signedAt', (extract(epoch from now()) * 1000)::bigint,
+    'dataUrl', coalesce(p_data_url, '')
+  );
+
+  select coalesce(jsonb_agg(sig), '[]'::jsonb)
+    into v_kept
+  from jsonb_array_elements((select signatures from minutes where id = p_minutes_id)) sig
+  where coalesce(sig ->> 'userId', '') <> auth.uid()::text;
+
+  update minutes
+  set signatures = v_kept || jsonb_build_array(v_sig)
+  where id = p_minutes_id
+  returning * into v_row;
+
+  perform log_audit('minutes_signed', v_label || ' signed minutes ' || p_minutes_id);
+
+  return v_row;
+end;
+$$;
+
+-- Sign as approver and lock in one transaction, so a signed document is never
+-- left unlocked (ApprovalsList used to do this in two client round-trips).
+create or replace function approve_minutes(p_minutes_id uuid, p_data_url text)
+returns minutes
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_meeting meetings;
+begin
+  select m.* into v_meeting
+  from meetings m
+  where m.id = (select meeting_id from minutes where id = p_minutes_id);
+
+  if v_meeting.id is null then
+    raise exception 'Minutes % not found', p_minutes_id;
+  end if;
+
+  if not (
+    sm_is_admin()
+    or v_meeting.chair_id = auth.uid()
+    or (sm_role() = 'head' and v_meeting.department_id = sm_department())
+  ) then
+    raise exception 'Only the department head or an administrator can approve these minutes'
+      using errcode = '42501';
+  end if;
+
+  perform sign_minutes(p_minutes_id, 'Head', p_data_url);
+  return lock_minutes(p_minutes_id);
+end;
+$$;
+
+-- Amending drops the approver's signature. New signatures carry kind='approver';
+-- older rows only have a role label, matched as before.
+drop function if exists amend_minutes(uuid, text);
+
+create or replace function amend_minutes(
+  p_minutes_id uuid,
+  p_summary text default null,
+  p_call_to_order text default null,
+  p_previous_minutes text default null,
+  p_agenda_items jsonb default null,
+  p_adjournment text default null
+)
+returns minutes
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_row minutes;
+  v_meeting meetings;
+  v_name text;
+  v_amendment jsonb;
+  v_kept jsonb;
+begin
+  select * into v_meeting
+  from meetings
+  where id = (select meeting_id from minutes where id = p_minutes_id);
+
+  if v_meeting.id is null then
+    raise exception 'Minutes % not found', p_minutes_id;
+  end if;
+
+  if not sm_can_edit_meeting_docs(v_meeting.id) then
+    raise exception 'Not permitted to amend these minutes' using errcode = '42501';
+  end if;
+
+  select name into v_name from profiles where id = auth.uid();
+
+  v_amendment := jsonb_build_object(
+    'ts', (extract(epoch from now()) * 1000)::bigint,
+    'byUserId', auth.uid(),
+    'byName', coalesce(v_name, 'Anonymous'),
+    'summary', coalesce(nullif(btrim(p_summary), ''), 'Minutes amended after lock')
+  );
+
+  select coalesce(jsonb_agg(sig), '[]'::jsonb)
+    into v_kept
+  from jsonb_array_elements((select signatures from minutes where id = p_minutes_id)) sig
+  where coalesce(sig ->> 'kind', '') <> 'approver'
+    and (sig ? 'kind' or coalesce(sig ->> 'role', '') !~* '(dean|chair|head|president|administrator)');
+
+  update minutes
+  set signatures = v_kept,
+      locked_at = null,
+      locked_by = null,
+      status = 'pending_approval',
+      amendments = amendments || jsonb_build_array(v_amendment),
+      call_to_order = coalesce(p_call_to_order, call_to_order),
+      previous_minutes = coalesce(p_previous_minutes, previous_minutes),
+      agenda_items = coalesce(p_agenda_items, agenda_items),
+      adjournment = coalesce(p_adjournment, adjournment)
+  where id = p_minutes_id
+  returning * into v_row;
+
+  update meetings set status = 'pending_approval' where id = v_meeting.id;
+
+  perform log_audit('minutes_amended',
+                    'Amended after lock: ' || coalesce(v_row.document_title, v_meeting.title));
+
+  if v_meeting.chair_id is not null then
+    perform notify_user(v_meeting.chair_id, 'approval', 'Minutes require re-approval',
+                        coalesce(v_row.document_title, v_meeting.title) ||
+                        ' was amended after approval and needs your signature again.');
+  end if;
+
+  return v_row;
+end;
+$$;
+
+-- ---------------------------------------------------------------------------
+-- 4. Function privileges.
+--
+-- Supabase grants EXECUTE on every new public function to anon. Take that away
+-- wholesale, then keep `authenticated` only on what the app calls (its default
+-- grant stays in place for the RLS helpers policies evaluate). notify_user and
+-- log_audit become internal: the workflow functions call them as owner, and the
+-- webhook calls log_audit as service_role.
+-- ---------------------------------------------------------------------------
+revoke execute on all functions in schema public from public, anon;
+alter default privileges in schema public revoke execute on functions from public, anon;
+alter default privileges for role postgres in schema public revoke execute on functions from public, anon;
+
+revoke execute on function notify_user(uuid, text, text, text) from authenticated;
+revoke execute on function log_audit(text, text) from authenticated;
+grant execute on function notify_user(uuid, text, text, text) to service_role;
+grant execute on function log_audit(text, text) to service_role;
+
+grant execute on function sm_is_active() to authenticated;
+grant execute on function sm_department_head(uuid) to authenticated;
+grant execute on function sign_minutes(uuid, text, text) to authenticated;
+grant execute on function approve_minutes(uuid, text) to authenticated;
+grant execute on function amend_minutes(uuid, text, text, text, jsonb, text) to authenticated;
+grant execute on function list_departments_public() to anon, authenticated;
+
+notify pgrst, 'reload schema';
+
+-- ==========================================================================
+-- END 0015_security_hardening.sql
+-- ==========================================================================
+
+-- ==========================================================================
+-- BEGIN 0016_meeting_people.sql
+-- ==========================================================================
+
+-- ============================================================================
+-- 0016 — Meeting people: guests, typed chairperson / panel / adviser,
+-- emergency meetings, one visibility rule, participant sync, notifications.
+--
+-- Client requests (Oct 2026 panel review):
+--   * participants without an account can be added by typing their name;
+--   * capstone chairperson and panel members are typed (external panelists,
+--     other colleges), optionally linked to an account;
+--   * unscheduled ("biglaan") emergency meetings alongside scheduled ones;
+--   * scheduled meetings notify the people on them.
+--
+-- The existing chairperson_id / panel_member_ids / adviser_id columns stay as
+-- the "linked account" half (the editor, transcribe route and webhook read
+-- them); the new name columns are the source of truth for display, and a
+-- trigger keeps the two in step.
+-- ============================================================================
+
+alter table meetings add column if not exists is_emergency boolean not null default false;
+alter table meetings add column if not exists guests jsonb not null default '[]'::jsonb;
+alter table meetings add column if not exists chairperson_name text;
+alter table meetings add column if not exists panel_members jsonb not null default '[]'::jsonb;
+alter table meetings add column if not exists adviser_name text;
+
+alter table meetings drop constraint if exists meetings_guests_is_array;
+alter table meetings add constraint meetings_guests_is_array
+  check (jsonb_typeof(guests) = 'array' and jsonb_array_length(guests) <= 100);
+
+alter table meetings drop constraint if exists meetings_panel_members_is_array;
+alter table meetings add constraint meetings_panel_members_is_array
+  check (jsonb_typeof(panel_members) = 'array' and jsonb_array_length(panel_members) <= 12);
+
+alter table meetings drop constraint if exists meetings_people_names_length;
+alter table meetings add constraint meetings_people_names_length
+  check (coalesce(length(chairperson_name), 0) <= 120 and coalesce(length(adviser_name), 0) <= 120);
+
+-- Notifications can point at the meeting they are about, so the bell can link
+-- each recipient to the right page for their role.
+alter table notifications add column if not exists meeting_id uuid references meetings (id) on delete cascade;
+
+-- Backfill display names for meetings created before this migration.
+update meetings m
+set chairperson_name = p.name
+from profiles p
+where m.chairperson_id = p.id and m.chairperson_name is null;
+
+update meetings m
+set adviser_name = p.name
+from profiles p
+where m.adviser_id = p.id and m.adviser_name is null;
+
+update meetings m
+set panel_members = coalesce((
+  select jsonb_agg(jsonb_build_object('name', p.name, 'userId', p.id) order by p.name)
+  from profiles p
+  where p.id = any (m.panel_member_ids)
+), '[]'::jsonb)
+where cardinality(m.panel_member_ids) > 0 and m.panel_members = '[]'::jsonb;
+
+-- ---------------------------------------------------------------------------
+-- One meeting visibility rule, evaluated on the row itself.
+--
+-- The old sm_can_see_meeting(id) re-read `meetings`, which a STABLE function
+-- cannot see during INSERT ... RETURNING (the new row is invisible to its
+-- snapshot), and it only let *faculty* see meetings they were invited to — a
+-- head or secretary from another college sitting on a capstone panel could
+-- not open the meeting at all.
+-- ---------------------------------------------------------------------------
+create or replace function sm_can_see_meeting_row(
+  p_id uuid,
+  p_department_id uuid,
+  p_secretary_id uuid,
+  p_chair_id uuid
+)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public, pg_temp
+as $$
+  select sm_is_active() and (
+    sm_is_admin()
+    or p_department_id = sm_department()
+    or p_secretary_id = auth.uid()
+    or p_chair_id = auth.uid()
+    or sm_is_participant(p_id)
+  );
+$$;
+
+create or replace function sm_can_see_meeting(p_meeting_id uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public, pg_temp
+as $$
+  select exists (
+    select 1
+    from meetings m
+    where m.id = p_meeting_id
+      and sm_can_see_meeting_row(m.id, m.department_id, m.secretary_id, m.chair_id)
+  );
+$$;
+
+drop policy if exists meetings_select on meetings;
+create policy meetings_select on meetings
+  for select to authenticated
+  using (sm_can_see_meeting_row(id, department_id, secretary_id, chair_id));
+
+-- ---------------------------------------------------------------------------
+-- Keep the linked-account columns in step with the typed people.
+-- Also validates the jsonb shapes the UI writes.
+-- ---------------------------------------------------------------------------
+create or replace function sync_meeting_people()
+returns trigger
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_elem jsonb;
+begin
+  for v_elem in select * from jsonb_array_elements(new.guests) loop
+    if jsonb_typeof(v_elem) <> 'object'
+       or coalesce(btrim(v_elem ->> 'name'), '') = ''
+       or length(v_elem ->> 'name') > 120 then
+      raise exception 'Each guest needs a name (up to 120 characters)' using errcode = '22023';
+    end if;
+  end loop;
+
+  for v_elem in select * from jsonb_array_elements(new.panel_members) loop
+    if jsonb_typeof(v_elem) <> 'object'
+       or coalesce(btrim(v_elem ->> 'name'), '') = ''
+       or length(v_elem ->> 'name') > 120 then
+      raise exception 'Each panel member needs a name (up to 120 characters)' using errcode = '22023';
+    end if;
+  end loop;
+
+  if jsonb_array_length(new.panel_members) > 0 then
+    new.panel_member_ids := coalesce((
+      select array_agg(distinct u)
+      from (
+        select sm_uuid_or_null(e ->> 'userId') as u
+        from jsonb_array_elements(new.panel_members) e
+      ) x
+      where u is not null and exists (select 1 from profiles p where p.id = u)
+    ), '{}');
+  elsif tg_op = 'UPDATE' and old.panel_members <> '[]'::jsonb then
+    new.panel_member_ids := '{}';
+  elsif cardinality(new.panel_member_ids) > 0 then
+    new.panel_members := coalesce((
+      select jsonb_agg(jsonb_build_object('name', p.name, 'userId', p.id) order by p.name)
+      from profiles p where p.id = any (new.panel_member_ids)
+    ), '[]'::jsonb);
+  end if;
+
+  if new.chairperson_id is not null and nullif(btrim(new.chairperson_name), '') is null then
+    select name into new.chairperson_name from profiles where id = new.chairperson_id;
+  end if;
+  if new.adviser_id is not null and nullif(btrim(new.adviser_name), '') is null then
+    select name into new.adviser_name from profiles where id = new.adviser_id;
+  end if;
+
+  new.chairperson_name := nullif(btrim(new.chairperson_name), '');
+  new.adviser_name := nullif(btrim(new.adviser_name), '');
+  return new;
+end;
+$$;
+
+drop trigger if exists meetings_sync_people on meetings;
+create trigger meetings_sync_people
+  before insert or update on meetings
+  for each row execute function sync_meeting_people();
+
+-- Linked accounts in a role (approving chair, panel chair, panel, adviser) are
+-- participants: they can see the meeting and they get its notifications.
+create or replace function add_meeting_role_participants()
+returns trigger
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+begin
+  insert into meeting_participants (meeting_id, user_id)
+  select new.id, u
+  from unnest(array[new.chair_id, new.chairperson_id, new.adviser_id] || new.panel_member_ids) as u
+  where u is not null
+  on conflict do nothing;
+  return null;
+end;
+$$;
+
+drop trigger if exists meetings_add_role_participants on meetings;
+create trigger meetings_add_role_participants
+  after insert or update of chair_id, chairperson_id, adviser_id, panel_member_ids on meetings
+  for each row execute function add_meeting_role_participants();
+
+-- ---------------------------------------------------------------------------
+-- Notifications. Raised by the database so they cannot be skipped or forged.
+-- Skipped when there is no signed-in actor (seed scripts, migrations).
+-- ---------------------------------------------------------------------------
+create or replace function sm_fmt_meeting_time(p_ts timestamptz)
+returns text
+language sql
+stable
+as $$
+  select to_char(p_ts at time zone 'Asia/Manila', 'Mon FMDD, YYYY "at" FMHH12:MI AM');
+$$;
+
+create or replace function notify_new_participant()
+returns trigger
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_m meetings;
+begin
+  if auth.uid() is null or new.user_id = auth.uid() then
+    return null;
+  end if;
+
+  select * into v_m from meetings where id = new.meeting_id;
+  if v_m.id is null then
+    return null;
+  end if;
+
+  insert into notifications (user_id, type, title, body, meeting_id)
+  values (
+    new.user_id,
+    'meeting_invite',
+    case when v_m.is_emergency then 'Emergency meeting now' else 'You''re invited to a meeting' end,
+    v_m.title || ' — ' || sm_fmt_meeting_time(v_m.starts_at) || coalesce(' · ' || nullif(v_m.venue, ''), ''),
+    v_m.id
+  );
+  return null;
+end;
+$$;
+
+drop trigger if exists meeting_participants_notify on meeting_participants;
+create trigger meeting_participants_notify
+  after insert on meeting_participants
+  for each row execute function notify_new_participant();
+
+create or replace function notify_meeting_rescheduled()
+returns trigger
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+begin
+  if auth.uid() is null then
+    return null;
+  end if;
+  if new.starts_at is not distinct from old.starts_at and new.venue is not distinct from old.venue then
+    return null;
+  end if;
+
+  insert into notifications (user_id, type, title, body, meeting_id)
+  select mp.user_id,
+         'meeting_update',
+         'Meeting rescheduled',
+         new.title || ' — now ' || sm_fmt_meeting_time(new.starts_at) || coalesce(' · ' || nullif(new.venue, ''), ''),
+         new.id
+  from meeting_participants mp
+  where mp.meeting_id = new.id and mp.user_id <> auth.uid();
+  return null;
+end;
+$$;
+
+drop trigger if exists meetings_notify_rescheduled on meetings;
+create trigger meetings_notify_rescheduled
+  after update of starts_at, venue on meetings
+  for each row execute function notify_meeting_rescheduled();
+
+-- ---------------------------------------------------------------------------
+-- People search for the chairperson / panel / participant pickers.
+-- Cross-department on purpose (external panelists), so it is a definer
+-- function returning only directory fields, to staff only, with a minimum
+-- query length and a hard row cap.
+-- ---------------------------------------------------------------------------
+create or replace function search_people(p_query text, p_limit int default 10)
+returns table (id uuid, name text, "position" text, role user_role, department_short text)
+language sql
+stable
+security definer
+set search_path = public, pg_temp
+as $$
+  select p.id, p.name, p.position, p.role, d.short
+  from profiles p
+  left join departments d on d.id = p.department_id
+  where sm_role() in ('admin', 'head', 'secretary')
+    and p.active
+    and length(btrim(coalesce(p_query, ''))) >= 2
+    and p.name ilike '%' || replace(replace(replace(btrim(p_query), '\', '\\'), '%', '\%'), '_', '\_') || '%'
+  order by p.name
+  limit least(greatest(coalesce(p_limit, 10), 1), 20);
+$$;
+
+revoke execute on function sm_can_see_meeting_row(uuid, uuid, uuid, uuid) from public, anon;
+revoke execute on function search_people(text, int) from public, anon;
+revoke execute on function sm_fmt_meeting_time(timestamptz) from public, anon;
+grant execute on function sm_can_see_meeting_row(uuid, uuid, uuid, uuid) to authenticated;
+grant execute on function search_people(text, int) to authenticated;
+
+notify pgrst, 'reload schema';
+
+-- ==========================================================================
+-- END 0016_meeting_people.sql
+-- ==========================================================================
+
+-- ==========================================================================
+-- BEGIN 0017_meeting_attachments.sql
+-- ==========================================================================
+
+-- ============================================================================
+-- 0017 — Meeting attachments (evidence).
+--
+-- Client request (Oct 2026): keep "evidence" with each meeting — photos of the
+-- paper attendance sheet, pictures, and the photographed handwritten panel
+-- notes (the original image must never be lost, only its OCR text kept).
+--
+-- Objects live in the private `meeting-attachments` bucket under
+--   <meeting_id>/<uuid>.<ext>
+-- so storage policies authorise on the path, exactly like meeting-audio (0004).
+-- ============================================================================
+
+create table if not exists meeting_attachments (
+  id uuid primary key default gen_random_uuid(),
+  meeting_id uuid not null references meetings (id) on delete cascade,
+  kind text not null default 'evidence'
+    check (kind in ('attendance_sheet', 'panel_notes', 'evidence', 'other')),
+  storage_path text not null unique,
+  file_name text not null check (length(file_name) between 1 and 255),
+  mime_type text not null,
+  size_bytes integer not null check (size_bytes > 0 and size_bytes <= 15728640),
+  caption text check (caption is null or length(caption) <= 500),
+  uploaded_by uuid references profiles (id) on delete set null default auth.uid(),
+  created_at timestamptz not null default now()
+);
+
+create index if not exists meeting_attachments_meeting_idx on meeting_attachments (meeting_id, created_at);
+
+alter table meeting_attachments enable row level security;
+
+drop policy if exists meeting_attachments_select on meeting_attachments;
+create policy meeting_attachments_select on meeting_attachments
+  for select to authenticated using (sm_can_see_meeting(meeting_id));
+
+drop policy if exists meeting_attachments_insert on meeting_attachments;
+create policy meeting_attachments_insert on meeting_attachments
+  for insert to authenticated
+  with check (sm_can_edit_meeting_docs(meeting_id) and uploaded_by = auth.uid());
+
+drop policy if exists meeting_attachments_delete on meeting_attachments;
+create policy meeting_attachments_delete on meeting_attachments
+  for delete to authenticated using (sm_can_edit_meeting_docs(meeting_id));
+
+-- No UPDATE policy: an attachment is replaced by deleting and re-uploading.
+
+grant select, insert, delete on meeting_attachments to authenticated;
+grant all on meeting_attachments to service_role;
+
+-- ---------------------------------------------------------------------------
+-- Storage
+-- ---------------------------------------------------------------------------
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values (
+  'meeting-attachments',
+  'meeting-attachments',
+  false,
+  15728640, -- 15 MB; the UI downscales photos to <= 2000px before upload
+  array['image/jpeg', 'image/png', 'image/webp', 'application/pdf']
+)
+on conflict (id) do update
+  set file_size_limit = excluded.file_size_limit,
+      allowed_mime_types = excluded.allowed_mime_types,
+      public = false;
+
+drop policy if exists "meeting attachments readable with the meeting" on storage.objects;
+create policy "meeting attachments readable with the meeting"
+  on storage.objects for select to authenticated
+  using (
+    bucket_id = 'meeting-attachments'
+    and sm_can_see_meeting(sm_uuid_or_null((storage.foldername(name))[1]))
+  );
+
+drop policy if exists "meeting attachments written by minute takers" on storage.objects;
+create policy "meeting attachments written by minute takers"
+  on storage.objects for insert to authenticated
+  with check (
+    bucket_id = 'meeting-attachments'
+    and sm_can_edit_meeting_docs(sm_uuid_or_null((storage.foldername(name))[1]))
+  );
+
+drop policy if exists "meeting attachments deleted by minute takers" on storage.objects;
+create policy "meeting attachments deleted by minute takers"
+  on storage.objects for delete to authenticated
+  using (
+    bucket_id = 'meeting-attachments'
+    and sm_can_edit_meeting_docs(sm_uuid_or_null((storage.foldername(name))[1]))
+  );
+
+-- The audio upload route accepts these types, but the bucket rejected them and
+-- left recording rows without a file. Align the bucket with the route.
+update storage.buckets
+set allowed_mime_types = array[
+  'audio/webm', 'audio/ogg', 'audio/mpeg', 'audio/mp4', 'audio/wav', 'audio/x-m4a',
+  'audio/x-wav', 'audio/aac', 'audio/flac'
+]
+where id = 'meeting-audio';
+
+notify pgrst, 'reload schema';
+
+-- ==========================================================================
+-- END 0017_meeting_attachments.sql
+-- ==========================================================================
+
+-- ==========================================================================
 -- Migration bookkeeping — keeps scripts/db-push.mjs in sync
 -- ==========================================================================
 
@@ -1842,5 +2960,12 @@ insert into schema_migrations (name) values
   ('0008_transcription.sql'),
   ('0009_transcription_rls.sql'),
   ('0010_minutes_ai_action_items.sql'),
-  ('0011_amend_minutes_body.sql')
+  ('0011_amend_minutes_body.sql'),
+  ('0011_smartmin_app_fields.sql'),
+  ('0012_meeting_rsvps.sql'),
+  ('0013_governance_extras.sql'),
+  ('0014_realtime.sql'),
+  ('0015_security_hardening.sql'),
+  ('0016_meeting_people.sql'),
+  ('0017_meeting_attachments.sql')
 on conflict (name) do nothing;

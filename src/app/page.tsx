@@ -15,14 +15,14 @@ export const metadata: Metadata = {
 const FEATURES = [
   {
     icon: 'wifi_off',
-    title: 'Offline Recording',
-    body: 'Records continue without network. Audio auto-syncs and transcribes when reconnected.',
+    title: 'Record now, upload later',
+    body: 'No internet in the room? Keep the recording and upload it from the meeting once you are back online.',
     accent: 'primary' as const,
   },
   {
     icon: 'translate',
-    title: 'Bilingual AI',
-    body: 'Transcribe in English & Tagalog; translate either direction instantly.',
+    title: 'Multilingual transcription',
+    body: 'Transcribes English, Filipino and Cebuano, including meetings that switch between them.',
     accent: 'tertiary' as const,
   },
   {
@@ -68,8 +68,8 @@ const ROLES = [
 
 const WORKFLOW = [
   { icon: 'event', step: '1. Schedule', note: 'Secretary creates meeting', gold: false },
-  { icon: 'mic', step: '2. Record', note: 'Live or offline capture', gold: false },
-  { icon: 'auto_awesome', step: '3. Transcribe', note: 'AI in EN & Tagalog', gold: true },
+  { icon: 'mic', step: '2. Record', note: 'Live, or upload later', gold: false },
+  { icon: 'auto_awesome', step: '3. Transcribe', note: 'English, Filipino, Cebuano', gold: true },
   { icon: 'summarize', step: '4. Summarize', note: 'Key points + actions', gold: true },
   { icon: 'description', step: '5. CHED MoM', note: 'Format-ready minutes', gold: false },
   { icon: 'draw', step: '6. Sign', note: 'Digital signatures', gold: false },
@@ -151,14 +151,14 @@ export default function LandingPage() {
         <div className="lg:w-1/2 flex flex-col gap-lg z-10">
           <div className="inline-flex items-center gap-sm bg-tertiary-fixed text-on-tertiary-fixed-variant px-sm py-xs rounded-full font-label-caps text-label-caps w-max">
             <span className="material-symbols-outlined text-[16px]">auto_awesome</span>
-            <span>AI-POWERED INSTITUTIONAL GOVERNANCE</span>
+            <span className="uppercase">AI-powered institutional governance</span>
           </div>
           <h1 className="font-display text-display text-on-background leading-[1.1]">
             Transforming <span className="text-primary">ZPPSU</span> Meetings Through AI Automation
           </h1>
           <p className="font-body-lg text-body-lg text-on-surface-variant max-w-2xl">
-            Offline-capable recording, bilingual transcription (English &amp; Tagalog), AI-extracted
-            action items, CHED-format minutes, and signed reports — all in one secure institutional
+            Schedule or start meetings, record or upload them, take attendance, and get AI-drafted
+            CHED-format minutes with action items and signatures — all in one secure institutional
             platform.
           </p>
           <div className="flex flex-wrap gap-md pt-sm">
@@ -175,26 +175,18 @@ export default function LandingPage() {
               <span className="material-symbols-outlined">play_circle</span> See Workflow
             </a>
           </div>
-          <div className="flex gap-lg pt-md">
-            <div>
-              <p className="font-h2 text-h2 font-bold text-primary">95%</p>
-              <p className="font-caption text-caption text-on-surface-variant">
-                Faster Documentation
-              </p>
-            </div>
-            <div>
-              <p className="font-h2 text-h2 font-bold text-primary">70%</p>
-              <p className="font-caption text-caption text-on-surface-variant">
-                Less Manual Encoding
-              </p>
-            </div>
-            <div>
-              <p className="font-h2 text-h2 font-bold text-primary">98%</p>
-              <p className="font-caption text-caption text-on-surface-variant">
-                Transcription Accuracy
-              </p>
-            </div>
-          </div>
+          <ul className="flex flex-wrap gap-lg pt-md">
+            {[
+              ['Attendance', 'built from the meeting, with signatures'],
+              ['Minutes', 'drafted by AI, approved by the head'],
+              ['Evidence', 'photos and panel notes kept with the record'],
+            ].map(([label, note]) => (
+              <li key={label}>
+                <p className="font-h3 text-h3 font-bold text-primary">{label}</p>
+                <p className="font-caption text-caption text-on-surface-variant">{note}</p>
+              </li>
+            ))}
+          </ul>
         </div>
 
         {/* Live-recording preview card */}
@@ -202,10 +194,10 @@ export default function LandingPage() {
           <div className="bg-surface-container-lowest border border-outline-variant rounded-xl shadow-primary-lg p-md">
             <div className="flex items-center justify-between border-b border-outline-variant pb-sm mb-md">
               <div className="flex items-center gap-xs">
-                <span className="w-3 h-3 rounded-full bg-error record-dot" />
-                <span className="font-label-caps text-label-caps text-error">RECORDING · 45:12</span>
+                <span aria-hidden="true" className="w-3 h-3 rounded-full bg-error record-dot" />
+                <span className="font-label-caps text-label-caps text-error uppercase">Recording · 45:12</span>
               </div>
-              <span className="ai-badge">AI Active</span>
+              <span className="ai-badge">Example</span>
             </div>
             <div className="flex items-end gap-xs h-24 mb-md justify-center">
               {WAVE.map((bar, i) => (

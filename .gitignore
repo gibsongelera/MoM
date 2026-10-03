@@ -37,3 +37,7 @@ __pycache__/
 
 # Local database backups (contain personal data)
 /backups/
+
+# Design references and thesis documents: kept locally, not in the repo
+/StitchGoogle/
+/Documents/

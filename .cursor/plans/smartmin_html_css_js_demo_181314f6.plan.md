@@ -100,10 +100,10 @@ SmartMin/
 
 Four seeded demo accounts (shown on login page):
 
-- `admin@zppsu.edu.ph` / `admin123` → System Administrator
-- `president@zppsu.edu.ph` / `head123` → College Dean / Head
-- `secretary@zppsu.edu.ph` / `sec123` → Faculty Secretary
-- `faculty@zppsu.edu.ph` / `fac123` → Faculty Member
+- `admin@zppsu.edu.ph` / (see `.env.local`) → System Administrator
+- `president@zppsu.edu.ph` / (see `.env.local`) → College Dean / Head
+- `secretary@zppsu.edu.ph` / (see `.env.local`) → Faculty Secretary
+- `faculty@zppsu.edu.ph` / (see `.env.local`) → Faculty Member
 
 Admin sees **merged/fetched-all** view (every department, every meeting, every user); other roles see only their scoped slice — implemented as a `scopeFor(user)` filter in `store.js`.
 
