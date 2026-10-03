@@ -6,6 +6,18 @@
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "dev"],
       "port": 3000
+    },
+    {
+      "name": "smartmin-src-dev",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "C:\\Users\\Mouadz S. Muco\\.cursor\\worktrees\\elevenlabs-stt-fix-a3f9c1d2\\node_modules\\next\\dist\\bin\\next",
+        "dev",
+        "C:\\Users\\Mouadz S. Muco\\.cursor\\worktrees\\elevenlabs-stt-fix-a3f9c1d2",
+        "-p",
+        "3100"
+      ],
+      "port": 3100
     }
   ]
 }
