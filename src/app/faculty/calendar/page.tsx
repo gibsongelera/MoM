@@ -39,7 +39,7 @@ export default async function FacultyCalendarPage({
       title: m.title,
       startsAt: m.starts_at,
       tone: (m.is_emergency ? 'emergency' : m.meeting_type) as CalendarEvent['tone'],
-      href: `/faculty/my-meetings?m=${m.id}#meeting-${m.id}`,
+      href: `/faculty/my-meetings/${m.id}`,
     })),
     ...(personal ?? []).map((p) => ({
       id: p.id,

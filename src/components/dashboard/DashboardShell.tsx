@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import type { DashboardUser } from '@/lib/auth/requireRole';
 import { ToastProvider } from '@/components/ui/Toast';
+import { FloatingAssistant } from '@/components/assistant/FloatingAssistant';
 import Sidebar from './Sidebar';
 import Topbar from './Topbar';
 
@@ -50,6 +51,7 @@ export default function DashboardShell({
           </main>
         </div>
       </div>
+      <FloatingAssistant />
     </ToastProvider>
   );
 }

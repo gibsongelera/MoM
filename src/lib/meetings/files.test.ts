@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { MAX_ATTACHMENT_BYTES, MAX_AUDIO_BYTES, attachmentFileProblem, audioFileProblem, baseMimeType, extensionFor } from './files';
+import { MAX_ATTACHMENT_BYTES, MAX_AUDIO_BYTES, attachmentFileProblem, audioFileProblem, baseMimeType, extensionFor, resolveAudioMimeType } from './files';
 
 describe('audio file rules', () => {
   it('accepts recorder output with codec parameters', () => {
@@ -8,9 +8,25 @@ describe('audio file rules', () => {
   });
 
   it('rejects non-audio, empty and oversized files with a readable reason', () => {
-    expect(audioFileProblem({ type: 'video/mp4', size: 1000 })).toMatch(/type/);
+    expect(audioFileProblem({ type: 'application/zip', size: 1000, name: 'notes.zip' })).toMatch(/type/);
+    expect(audioFileProblem({ type: 'image/png', size: 1000, name: 'a.webm' })).toMatch(/type/);
     expect(audioFileProblem({ type: 'audio/mpeg', size: 0 })).toMatch(/empty/);
     expect(audioFileProblem({ type: 'audio/mpeg', size: MAX_AUDIO_BYTES + 1 })).toMatch(/500 MB/);
+  });
+});
+
+describe('resolveAudioMimeType', () => {
+  it('accepts a saved .webm recording that Chrome labels video/webm', () => {
+    expect(resolveAudioMimeType({ type: 'video/webm', name: 'emergency-meeting.webm' })).toBe('audio/webm');
+    expect(audioFileProblem({ type: 'video/webm', size: 1000, name: 'emergency-meeting.webm' })).toBeNull();
+  });
+
+  it('maps common aliases and falls back to the extension when the type is blank', () => {
+    expect(resolveAudioMimeType({ type: 'audio/mp3' })).toBe('audio/mpeg');
+    expect(resolveAudioMimeType({ type: 'video/mp4' })).toBe('audio/mp4');
+    expect(resolveAudioMimeType({ type: '', name: 'meeting.M4A' })).toBe('audio/x-m4a');
+    expect(resolveAudioMimeType({ type: 'application/octet-stream', name: 'x.opus' })).toBe('audio/ogg');
+    expect(resolveAudioMimeType({ type: '', name: 'notes.txt' })).toBeNull();
   });
 });
 

@@ -1,14 +1,15 @@
 'use client';
 
 import { useEffect } from 'react';
-import { Button } from '@/components/ui/Button';
+import { Button, buttonClasses } from '@/components/ui/Button';
+import { Icon } from '@/components/ui/Icon';
 
 /**
  * Print / close controls above the document (hidden when printing). With
  * autoPrint, the browser's print dialog opens once the page has rendered —
  * the "Print now" path from the save prompt and the meeting hub.
  */
-export default function PrintToolbar({ autoPrint, fileName }: { autoPrint: boolean; fileName: string }) {
+export default function PrintToolbar({ autoPrint, fileName, meetingId }: { autoPrint: boolean; fileName: string; meetingId: string }) {
   useEffect(() => {
     // The PDF "Save as" name comes from the document title.
     document.title = fileName;
@@ -19,8 +20,14 @@ export default function PrintToolbar({ autoPrint, fileName }: { autoPrint: boole
 
   return (
     <div className="no-print mx-auto mb-md flex max-w-[850px] flex-wrap items-center justify-between gap-sm">
-      <p className="font-body-sm text-on-surface-variant">Preview. Use Print, then choose a printer or “Save as PDF”.</p>
-      <div className="flex gap-sm">
+      <p className="font-body-sm text-on-surface-variant">Preview of the minutes (CHED format). Print, or download a PDF or Word copy.</p>
+      <div className="flex flex-wrap gap-sm">
+        <a href={`/api/minutes/${meetingId}/export?format=pdf`} className={buttonClasses('secondary', 'md', 'pl-sm')}>
+          <Icon name="picture_as_pdf" size={18} /> PDF
+        </a>
+        <a href={`/api/minutes/${meetingId}/export?format=docx`} className={buttonClasses('secondary', 'md', 'pl-sm')}>
+          <Icon name="description" size={18} /> Word
+        </a>
         <Button variant="secondary" icon="close" onClick={() => window.close()}>
           Close
         </Button>

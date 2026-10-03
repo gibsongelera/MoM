@@ -272,6 +272,13 @@
   .ched-doc h3 {
     font-family: 'Public Sans', sans-serif;
   }
+  /* The printed minutes follow the CHED memorandum look: Arial throughout. */
+  .ched-paper,
+  .ched-paper h1,
+  .ched-paper h2,
+  .ched-paper h3 {
+    font-family: Arial, Helvetica, sans-serif;
+  }
 
   /* Recording indicator: a steady dot. The running timer next to it is the
      "it's live" signal, so the dot itself does not pulse. */
@@ -548,6 +555,10 @@
      without them simply show/hide instantly.
      ------------------------------------------------------------------------ */
   .sm-dialog {
+    /* Tailwind's preflight resets every margin to 0, which removes the UA's
+       `margin: auto` that centres a modal <dialog> in the top layer and pins
+       it to the top-left corner instead. Put the centring back. */
+    margin: auto;
     opacity: 0;
     transform: translateY(-4px);
     transition:
@@ -582,6 +593,31 @@
     .sm-dialog[open]::backdrop {
       background: rgba(26, 28, 28, 0);
     }
+  }
+
+  /* --------------------------------------------------------------------------
+     SmartMin Assistant panel (components/assistant/FloatingAssistant.tsx).
+     Grows from the button's corner: 180ms ease-out in; 120ms out, subtler.
+     visibility flips after the exit so the closed panel takes no clicks.
+     ------------------------------------------------------------------------ */
+  .sm-assistant-panel {
+    transform-origin: bottom right;
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+    visibility: hidden;
+    transition:
+      opacity var(--motion-fast) var(--ease-in),
+      transform var(--motion-fast) var(--ease-in),
+      visibility 0s linear var(--motion-fast);
+  }
+  .sm-assistant-panel[data-open='true'] {
+    opacity: 1;
+    transform: none;
+    visibility: visible;
+    transition:
+      opacity var(--motion-base) var(--ease-out),
+      transform var(--motion-base) var(--ease-out),
+      visibility 0s;
   }
 
   /* --------------------------------------------------------------------------

@@ -27,15 +27,33 @@ export const actionItemsOutput = z.object({
   ),
 });
 
+/**
+ * Minutes in the CHED AO No. 06, s. 2014 order of business (see
+ * src/lib/minutes/ched.ts). Every string may be empty when the transcript
+ * says nothing about that part — the document prints "None." rather than
+ * inventing content.
+ */
+const businessItem = z.object({
+  title: z.string(),
+  discussion: z.string(),
+  action: z.string(),
+});
+
 export const minutesOutput = z.object({
   callToOrder: z.string(),
+  quorum: z.string(),
+  provisionalAgenda: z.string(),
   previousMinutes: z.string(),
-  agendaItems: z.array(
-    z.object({
-      title: z.string(),
-      notes: z.string(),
+  mattersArising: z.string(),
+  chairpersonTime: z.string(),
+  headReport: z.string(),
+  newBusiness: z.array(
+    businessItem.extend({
+      category: z.enum(['financial', 'academic', 'administrative', 'policy', 'legal', 'none']),
     }),
   ),
+  mattersForConfirmation: z.array(businessItem),
+  otherMatters: z.array(businessItem),
   adjournment: z.string(),
 });
 

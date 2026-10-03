@@ -6,6 +6,7 @@ import { FormEvent, Suspense, useMemo, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { ROLE_DASHBOARDS, type UserRole } from '@/lib/types/domain';
 import { safeNextPath } from '@/lib/auth/safe-next';
+import { Logo } from '@/components/ui/Logo';
 
 type DemoAccount = {
   label: string;
@@ -84,6 +85,7 @@ function LoginForm() {
     <main className="min-h-screen bg-background p-gutter flex items-center justify-center">
       <div className="w-full max-w-[480px] bg-surface-container-lowest rounded-xl border border-outline-variant shadow-primary-lg p-xl">
         <div className="text-center mb-lg">
+          <Logo size={88} className="mx-auto mb-sm" alt="" priority />
           <h1 className="font-h2 text-h2 text-primary">ZPPSU SmartMin Login</h1>
           <p className="font-body-md text-on-surface-variant">
             Institutional Governance and AI Assistant

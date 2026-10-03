@@ -355,6 +355,39 @@ async function main() {
          values ($1, 'evidence', $2, 's.jpg', 'image/jpeg', 1024)`, [m.id, `${m.id}/s.jpg`]));
   });
 
+  // --- Personal meetings and recordings (0018) ------------------------------
+  await check('faculty can log a personal entry linked to a meeting they can see', 'ok', async () => {
+    const m = await fixtureMeeting();
+    await as('faculty', () =>
+      q(`insert into personal_meetings (user_id, title, meeting_date, meeting_id)
+         values (auth.uid(), 'My notes', current_date, $1)`, [m.id]));
+  });
+  await check("faculty cannot link another college's meeting", 'deny', async () => {
+    const { rows } = await q(
+      `insert into meetings (title, starts_at, department_id, secretary_id) values ('CET probe', now() + interval '1 day', $1, $2) returning id`,
+      [ids.cet, ids.s2],
+    );
+    await as('faculty', () =>
+      q(`insert into personal_meetings (user_id, title, meeting_date, meeting_id)
+         values (auth.uid(), 'Snoop', current_date, $1)`, [rows[0].id]));
+  });
+  await check("a secretary cannot read a faculty member's personal log", 'ok', async () => {
+    const { rows: own } = await q(
+      `insert into personal_meetings (user_id, title, meeting_date) values ($1, 'Private', current_date) returning id`,
+      [ids.faculty],
+    );
+    await as('secretary', async () => {
+      const { rows } = await q('select id from personal_meetings where id = $1', [own[0].id]);
+      assert(rows.length === 0, 'secretary could read it');
+    });
+  });
+  await check('faculty can store audio in their own personal-audio folder', 'ok', () =>
+    as('faculty', () =>
+      q(`insert into storage.objects (bucket_id, name) values ('personal-audio', $1)`, [`${ids.faculty}/probe/rec.webm`])));
+  await check("faculty cannot store audio in someone else's folder", 'deny', () =>
+    as('faculty', () =>
+      q(`insert into storage.objects (bucket_id, name) values ('personal-audio', $1)`, [`${ids.secretary}/probe/rec.webm`])));
+
   // --- People search --------------------------------------------------------
   await check('faculty get no results from people search', 'ok', () =>
     as('faculty', async () => {

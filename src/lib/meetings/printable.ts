@@ -4,6 +4,7 @@ import { docTitleFor } from '@/lib/ai/doc-title';
 import type { MeetingGuest, MeetingType, PanelMember } from '@/lib/types/domain';
 import { buildRoster, type AttendanceRecord, type RosterPerson } from './roster';
 import type { AttachmentKind } from './files';
+import type { MinutesItem } from '@/lib/minutes/ched';
 
 export interface PrintSignature {
   userId: string;
@@ -45,7 +46,7 @@ export interface PrintableMeeting {
     status: string;
     call_to_order: string;
     previous_minutes: string;
-    agenda_items: { title: string; notes: string }[];
+    agenda_items: MinutesItem[];
     adjournment: string;
     signatures: PrintSignature[];
     paper_notes: PaperNote[];

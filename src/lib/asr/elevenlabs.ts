@@ -8,7 +8,11 @@
  *     verbatim under `data.webhook_metadata` in the callback body) is how we
  *     thread our own transcription_jobs.id through. There is no per-request
  *     webhook URL param — the destination itself is configured once in the
- *     ElevenLabs dashboard (Settings -> Webhooks).
+ *     ElevenLabs dashboard (Settings -> Webhooks). Until one is registered,
+ *     `webhook: true` fails with `no_webhooks_configured`.
+ *   - Without `webhook`, the same endpoint answers synchronously with the
+ *     transcript in the body (`transcribe()` below) - used for local dev,
+ *     where ElevenLabs can't reach a localhost webhook anyway.
  *   - Signature header is `elevenlabs-signature: t={unix_ts},v0={hex hmac}`,
  *     HMAC-SHA256 of the string `${timestamp}.${rawBody}` with the webhook
  *     signing secret. This exact byte format is corroborated by ElevenLabs'
@@ -52,7 +56,7 @@ function webhookSecret(): string {
   return secret;
 }
 
-async function submit(req: AsrRequest): Promise<AsrSubmission> {
+function buildForm(req: AsrRequest, delivery: 'webhook' | 'sync'): FormData {
   const form = new FormData();
   form.append('model_id', MODEL);
   form.append('source_url', req.audioUrl);
@@ -80,19 +84,33 @@ async function submit(req: AsrRequest): Promise<AsrSubmission> {
     .map((k) => k.trim().replace(PROHIBITED_CHARS, ''))
     .filter((k) => k.length > 0 && k.length < 50);
   for (const term of safeKeyterms) form.append('keyterms', term);
-  form.append('webhook', 'true');
-  form.append('webhook_metadata', JSON.stringify({ transcriptionJobId: req.webhookRef }));
+  if (delivery === 'webhook') {
+    form.append('webhook', 'true');
+    form.append('webhook_metadata', JSON.stringify({ transcriptionJobId: req.webhookRef }));
+  }
+  return form;
+}
 
+/** Turns an error response into an AsrProviderError that keeps ElevenLabs' `detail.status` code. */
+async function providerError(stage: string, res: Response): Promise<AsrProviderError> {
+  const detail = await res.text().catch(() => '');
+  let code: string | undefined;
+  try {
+    code = (JSON.parse(detail) as { detail?: { status?: string } }).detail?.status;
+  } catch {
+    // not JSON; the raw text is still in the message
+  }
+  return new AsrProviderError('elevenlabs', `${stage} failed: ${detail || res.statusText}`, res.status, code);
+}
+
+async function submit(req: AsrRequest): Promise<AsrSubmission> {
   const res = await fetch(API_URL, {
     method: 'POST',
     headers: { 'xi-api-key': apiKey() },
-    body: form,
+    body: buildForm(req, 'webhook'),
   });
 
-  if (!res.ok) {
-    const detail = await res.text().catch(() => '');
-    throw new AsrProviderError('elevenlabs', `submit failed: ${detail || res.statusText}`, res.status);
-  }
+  if (!res.ok) throw await providerError('submit', res);
 
   const body = (await res.json()) as { request_id?: string; transcription_id?: string };
   const providerJobId = body.request_id ?? body.transcription_id;
@@ -100,6 +118,54 @@ async function submit(req: AsrRequest): Promise<AsrSubmission> {
     throw new AsrProviderError('elevenlabs', 'submit response had no request/transcription id');
   }
   return { providerJobId, model: MODEL };
+}
+
+type ElevenLabsTranscription = {
+  transcription_id?: string;
+  language_code?: string;
+  language_probability?: number;
+  text?: string;
+  words?: {
+    text: string;
+    start: number;
+    end: number;
+    type: 'word' | 'spacing' | 'audio_event';
+    speaker_id?: string | null;
+  }[];
+};
+
+function toResult(t: ElevenLabsTranscription, providerJobId: string, webhookRef: string | null): AsrResult {
+  const words: AsrWord[] = (t.words ?? []).map((w) => ({
+    text: w.text,
+    start: w.start,
+    end: w.end,
+    type: w.type,
+    speakerId: w.speaker_id ?? null,
+  }));
+  return {
+    providerJobId,
+    webhookRef,
+    languageCode: t.language_code ?? 'unknown',
+    languageProbability: t.language_probability ?? null,
+    text: t.text ?? '',
+    words,
+  };
+}
+
+/**
+ * Synchronous transcription: without `webhook=true` the same endpoint holds
+ * the request open and returns the transcript in the response body. A long
+ * meeting can take minutes, so callers run this after responding (after()).
+ */
+async function transcribe(req: AsrRequest): Promise<AsrResult> {
+  const res = await fetch(API_URL, {
+    method: 'POST',
+    headers: { 'xi-api-key': apiKey() },
+    body: buildForm(req, 'sync'),
+  });
+  if (!res.ok) throw await providerError('transcribe', res);
+  const body = (await res.json()) as ElevenLabsTranscription;
+  return toResult(body, body.transcription_id ?? `sync-${req.webhookRef}`, req.webhookRef);
 }
 
 function verifyWebhook(rawBody: string, headers: Headers): boolean {
@@ -131,18 +197,7 @@ type ElevenLabsWebhookPayload = {
   data?: {
     request_id?: string;
     webhook_metadata?: { transcriptionJobId?: string } | null;
-    transcription?: {
-      language_code?: string;
-      language_probability?: number;
-      text?: string;
-      words?: {
-        text: string;
-        start: number;
-        end: number;
-        type: 'word' | 'spacing' | 'audio_event';
-        speaker_id?: string | null;
-      }[];
-    };
+    transcription?: ElevenLabsTranscription;
   };
 };
 
@@ -152,29 +207,14 @@ async function parseWebhook(payload: unknown): Promise<AsrResult> {
   if (!body?.data?.request_id || !t) {
     throw new AsrProviderError('elevenlabs', 'webhook payload missing data.request_id or data.transcription');
   }
-
-  const words: AsrWord[] = (t.words ?? []).map((w) => ({
-    text: w.text,
-    start: w.start,
-    end: w.end,
-    type: w.type,
-    speakerId: w.speaker_id ?? null,
-  }));
-
-  return {
-    providerJobId: body.data.request_id,
-    webhookRef: body.data.webhook_metadata?.transcriptionJobId ?? null,
-    languageCode: t.language_code ?? 'unknown',
-    languageProbability: t.language_probability ?? null,
-    text: t.text ?? '',
-    words,
-  };
+  return toResult(t, body.data.request_id, body.data.webhook_metadata?.transcriptionJobId ?? null);
 }
 
 export const elevenLabsProvider: AsrProvider = {
   name: 'elevenlabs',
   supportedLanguages: ['eng', 'fil', 'ceb', 'auto'],
   submit,
+  transcribe,
   verifyWebhook,
   parseWebhook,
 };

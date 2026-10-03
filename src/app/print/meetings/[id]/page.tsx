@@ -28,7 +28,7 @@ export default async function PrintMeetingPage({
 
   return (
     <>
-      <PrintToolbar autoPrint={autoprint === '1'} fileName={fileName} />
+      <PrintToolbar autoPrint={autoprint === '1'} fileName={fileName} meetingId={id} />
       <MinutesDocument data={data} />
     </>
   );

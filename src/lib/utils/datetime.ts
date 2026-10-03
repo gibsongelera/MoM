@@ -78,3 +78,8 @@ export function manilaMonthRange(year: number, month: number): { start: string; 
     end: new Date(`${next.y}-${pad(next.m + 1)}-01T00:00:00${MANILA_OFFSET}`).toISOString(),
   };
 }
+
+/** ISO timestamp `days` before now — for "recent" query windows. */
+export function isoDaysAgo(days: number, now: Date = new Date()): string {
+  return new Date(now.getTime() - days * 86_400_000).toISOString();
+}

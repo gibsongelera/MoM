@@ -41,3 +41,23 @@ export function selectProvider(language: AsrLanguage, preferred: string = DEFAUL
 export * from './types';
 export { buildKeyterms } from './keyterms';
 export type { KeytermSource } from './keyterms';
+
+/**
+ * How transcripts come back to us.
+ *
+ * - `webhook`: submit and return; the provider calls /api/webhooks/* later.
+ *   Needs a public URL registered in the provider dashboard.
+ * - `sync`: hold the provider request open (after the HTTP response) and
+ *   store the result ourselves. Works anywhere, including localhost.
+ *
+ * ASR_DELIVERY forces one; otherwise a localhost app URL (which no provider
+ * can call back to) means `sync`. A webhook submit that fails because no
+ * webhook is registered also falls back to `sync` (see /api/transcribe).
+ */
+export function asrDelivery(): 'webhook' | 'sync' {
+  const forced = process.env.ASR_DELIVERY;
+  if (forced === 'webhook' || forced === 'sync') return forced;
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? '';
+  if (!appUrl || /\/\/(localhost|127\.0\.0\.1|\[::1\])([:/]|$)/i.test(appUrl)) return 'sync';
+  return 'webhook';
+}

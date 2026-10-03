@@ -51,6 +51,8 @@ export class AsrProviderError extends Error {
     public provider: string,
     message: string,
     public status?: number,
+    /** Provider's machine-readable reason, e.g. ElevenLabs `no_webhooks_configured`. */
+    public code?: string,
   ) {
     super(`[${provider}] ${message}`);
     this.name = 'AsrProviderError';
@@ -61,6 +63,12 @@ export interface AsrProvider {
   readonly name: string;
   readonly supportedLanguages: readonly AsrLanguage[];
   submit(req: AsrRequest): Promise<AsrSubmission>;
+  /**
+   * Transcribes and waits for the result in the same request — no webhook.
+   * Used when the provider can't reach us (local dev on localhost) or no
+   * webhook is registered. Optional: providers without it are webhook-only.
+   */
+  transcribe?(req: AsrRequest): Promise<AsrResult>;
   /** Verifies a raw (unparsed) webhook body against provider-specific signing. */
   verifyWebhook(rawBody: string, headers: Headers): boolean;
   parseWebhook(payload: unknown): Promise<AsrResult>;

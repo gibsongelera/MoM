@@ -11,8 +11,13 @@ that the department head signs and locks.
   maroon `#570000`, gold `#cba72f`, Public Sans / Inter, Material Symbols).
 - Supabase Postgres + Auth + Storage. Row Level Security is the access
   boundary; the UI hiding a control is a convenience.
-- ElevenLabs Scribe (speech-to-text, webhook-delivered), Claude (minutes,
-  action items, reading handwritten panel notes), Brevo HTTP API (email).
+- ElevenLabs Scribe (speech-to-text), Claude (minutes, action items, reading
+  handwritten panel notes, the SmartMin Assistant), Brevo HTTP API (email).
+- Transcripts arrive by webhook in production, or synchronously inside
+  `after()` when no webhook can reach the app (localhost) or none is
+  registered — `asrDelivery()` in `src/lib/asr/index.ts`, override with
+  `ASR_DELIVERY=webhook|sync`. Both paths store results through
+  `src/lib/asr/complete.ts`; every step logs one `[asr] …` line.
 
 ## Data and mutation pattern
 - Pages are async **server components** reading through
@@ -46,6 +51,32 @@ that the department head signs and locks.
 - Evidence: `meeting_attachments` + private bucket `meeting-attachments`
   (`<meetingId>/<uuid>.<ext>`).
 
+## Minutes format (CHED)
+- Minutes follow the order of business of CHED AO No. 06, s. 2014:
+  I. Preliminaries (A–G) · II. New Business (matters for approval by
+  category) · III. Matters for Confirmation · IV. Other Matters ·
+  V. Adjournment, on a ZPPSU + CHED letterhead
+  (`public/assets/images/ZppsuLogo.png`, `ched-logo.png`).
+- `src/lib/minutes/ched.ts` is the single source: `splitMinutes` /
+  `joinMinutes` map the editor to storage (call_to_order, previous_minutes,
+  adjournment columns + `agenda_items` items with `section` / `key` /
+  `category` / `action`; legacy items read as New Business), and
+  `buildChedDocument` builds the tree that the print view
+  (`MinutesDocument`), the PDF (`lib/minutes/pdf.tsx`, @react-pdf) and the
+  Word file (`lib/minutes/docx.ts`, docx) all render.
+- Downloads: `GET /api/minutes/[meetingId]/export?format=pdf|docx` (RLS-scoped).
+
+## Faculty and the assistant
+- Personal meetings (0018): private log with CRUD, archive, and the owner's
+  own recording in the `personal-audio` bucket (`<userId>/<id>/<uuid>.ext`),
+  transcribed by `/api/personal/transcribe` onto the row. Never the official
+  meeting record. Faculty can link one to a meeting they can see
+  (`/faculty/my-meetings/[id]`).
+- SmartMin Assistant: floating chat on every dashboard page
+  (`components/assistant/FloatingAssistant.tsx` → `/api/ai/chat`). The
+  server rebuilds the context through the caller's RLS client
+  (`src/lib/ai/chat.ts`) — never trust context sent by the browser.
+
 ## Key places
 - Secretary flow: `/secretary/meetings` (list + New / Emergency) →
   `/secretary/meetings/[id]` (Record or upload · Attendance · Attachments ·
@@ -64,7 +95,8 @@ that the department head signs and locks.
 - Before applying: `npm run db:backup`, then `npm run db:verify:pending`
   (applies pending files inside a rolled-back transaction and runs the RLS
   checks). After: `npm run db:verify`.
-- Rollback for 0015–0017: `supabase/rollback/0015-0017_down.sql`.
+- Rollback for 0015–0017: `supabase/rollback/0015-0017_down.sql`; for 0018:
+  `supabase/rollback/0018_down.sql`. Applied live through 0018; next is 0019.
 - The older root app (branch `archive/root-app-2026-10`) is incompatible with
   0015+ (it calls `notify_user`/`log_audit` from the browser). Don't run it.
 

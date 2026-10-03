@@ -13,7 +13,7 @@ export function notificationHref(
     case 'meeting_invite':
     case 'meeting_update':
       if (role === 'secretary') return meetingId ? `/secretary/meetings/${meetingId}` : '/secretary/meetings';
-      if (role === 'faculty') return '/faculty/my-meetings';
+      if (role === 'faculty') return meetingId ? `/faculty/my-meetings/${meetingId}` : '/faculty/my-meetings';
       if (role === 'head') return '/head/calendar';
       return '/admin/meetings';
     case 'approval':

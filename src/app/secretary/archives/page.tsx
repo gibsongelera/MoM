@@ -151,6 +151,12 @@ export default async function MeetingHistoryPage({
                   <a href={`/print/meetings/${m.id}`} target="_blank" rel="noreferrer" className={buttonClasses('ghost', 'sm')}>
                     <Icon name="print" size={16} /> Print
                   </a>
+                  <a href={`/api/minutes/${m.id}/export?format=pdf`} className={buttonClasses('ghost', 'sm')} aria-label={`Download ${m.title} minutes as PDF`}>
+                    <Icon name="picture_as_pdf" size={16} /> PDF
+                  </a>
+                  <a href={`/api/minutes/${m.id}/export?format=docx`} className={buttonClasses('ghost', 'sm')} aria-label={`Download ${m.title} minutes as Word`}>
+                    <Icon name="description" size={16} /> Word
+                  </a>
                 </div>
               </li>
             );

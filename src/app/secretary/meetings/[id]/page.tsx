@@ -256,12 +256,19 @@ export default async function MeetingHubPage({
 
       {step === 'print' ? (
         <section className="flex flex-col gap-md rounded-xl border border-outline-variant bg-surface-container-lowest p-lg">
-          <h2 className="font-h3 text-h3">Print or save as PDF</h2>
+          <h2 className="font-h3 text-h3">Print or download</h2>
           <p className="font-body-sm text-on-surface-variant">
-            The printed minutes include the attendance list, the defense panel, signatures and a list of attachments.
-            {minutes?.status !== 'approved' ? ' Until the head approves them, they print with a DRAFT mark.' : ''}
+            The minutes follow the CHED format (AO No. 06, s. 2014) on the ZPPSU and CHED letterhead, with the attendance list, the defense panel,
+            signatures, and annexes for action items and attachments.
+            {minutes?.status !== 'approved' ? ' Until the head approves them, every copy carries a DRAFT mark.' : ''}
           </p>
           <div className="flex flex-wrap gap-sm">
+            <a href={`/api/minutes/${id}/export?format=pdf`} className={buttonClasses('secondary', 'md', 'pl-sm')}>
+              <Icon name="picture_as_pdf" size={18} /> Download PDF
+            </a>
+            <a href={`/api/minutes/${id}/export?format=docx`} className={buttonClasses('secondary', 'md', 'pl-sm')}>
+              <Icon name="description" size={18} /> Download Word
+            </a>
             <a href={`/print/meetings/${id}`} target="_blank" rel="noreferrer" className={buttonClasses('secondary')}>
               <Icon name="visibility" size={18} /> Preview
             </a>

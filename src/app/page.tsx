@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import type { Metadata } from 'next';
+import { Logo } from '@/components/ui/Logo';
 
 /**
  * Landing page. Port of the legacy index.html.
@@ -94,11 +95,7 @@ export default function LandingPage() {
     <div className="text-on-background antialiased overflow-x-hidden">
       <nav className="fixed top-0 left-0 right-0 flex justify-between items-center px-lg py-sm w-full bg-surface/80 backdrop-blur-md border-b border-outline-variant z-50 shadow-sm">
         <div className="flex items-center gap-sm">
-          <div className="w-9 h-9 rounded-full bg-primary text-on-primary flex items-center justify-center shadow-primary-md">
-            <span aria-hidden="true" translate="no" className="material-symbols-outlined" style={{ fontVariationSettings: "'FILL' 1" }}>
-              account_balance
-            </span>
-          </div>
+          <Logo size={40} alt="" priority />
           <span className="font-h2 text-h2 font-bold text-primary">SmartMin AI</span>
         </div>
         <div className="hidden md:flex items-center gap-lg">
@@ -338,12 +335,15 @@ export default function LandingPage() {
 
       <footer className="bg-inverse-surface text-inverse-on-surface px-gutter py-xl">
         <div className="max-w-container-max mx-auto flex flex-col md:flex-row justify-between gap-md">
-          <div>
+          <div className="flex items-start gap-md">
+            <Logo size={48} alt="" />
+            <div>
             <h3 className="font-h3 text-h3 text-on-primary mb-xs">ZPPSU SmartMin AI</h3>
             <p className="font-caption text-caption opacity-70">
               © 2026 Zamboanga Peninsula Polytechnic State University. Institutional Governance
               Platform.
             </p>
+            </div>
           </div>
           <div className="flex gap-lg text-body-sm">
             <Link href="/login" className="hover:text-tertiary-fixed transition-colors">

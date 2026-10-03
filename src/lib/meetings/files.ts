@@ -41,10 +41,58 @@ function mb(bytes: number): string {
   return `${Math.round(bytes / (1024 * 1024))} MB`;
 }
 
+/**
+ * Aliases browsers report for files that are really audio we accept. Chrome on
+ * Windows labels a saved `.webm` recording `video/webm` (our own "Save
+ * recording to this device" output), and phone recorders often produce
+ * `video/mp4` / `audio/mp3`. The audio track is what gets transcribed.
+ */
+const AUDIO_TYPE_ALIASES: Record<string, AudioMimeType> = {
+  'video/webm': 'audio/webm',
+  'video/ogg': 'audio/ogg',
+  'video/mp4': 'audio/mp4',
+  'audio/mp3': 'audio/mpeg',
+  'audio/x-mp3': 'audio/mpeg',
+  'audio/m4a': 'audio/x-m4a',
+  'audio/wave': 'audio/wav',
+  'audio/vnd.wave': 'audio/wav',
+  'audio/x-flac': 'audio/flac',
+  'audio/opus': 'audio/ogg',
+};
+
+/** Used when the browser reports no type at all (common for .m4a / .opus on Windows). */
+const AUDIO_TYPE_BY_EXTENSION: Record<string, AudioMimeType> = {
+  webm: 'audio/webm',
+  weba: 'audio/webm',
+  ogg: 'audio/ogg',
+  oga: 'audio/ogg',
+  opus: 'audio/ogg',
+  mp3: 'audio/mpeg',
+  m4a: 'audio/x-m4a',
+  mp4: 'audio/mp4',
+  aac: 'audio/aac',
+  wav: 'audio/wav',
+  flac: 'audio/flac',
+};
+
+/**
+ * The accepted audio MIME type for a file, or null if it isn't one. Checks the
+ * reported type first, then known aliases, then the file extension.
+ */
+export function resolveAudioMimeType(file: { type: string; name?: string }): AudioMimeType | null {
+  const type = baseMimeType(file.type || '');
+  if ((ALLOWED_AUDIO_TYPES as readonly string[]).includes(type)) return type as AudioMimeType;
+  if (AUDIO_TYPE_ALIASES[type]) return AUDIO_TYPE_ALIASES[type];
+  const ext = file.name?.split('.').pop()?.toLowerCase();
+  if ((!type || type === 'application/octet-stream') && ext && AUDIO_TYPE_BY_EXTENSION[ext]) {
+    return AUDIO_TYPE_BY_EXTENSION[ext];
+  }
+  return null;
+}
+
 /** Returns a message for the person uploading, or null when the file is fine. */
 export function audioFileProblem(file: { type: string; size: number; name?: string }): string | null {
-  const type = baseMimeType(file.type);
-  if (!(ALLOWED_AUDIO_TYPES as readonly string[]).includes(type)) {
+  if (!resolveAudioMimeType(file)) {
     return "That file type isn't supported. Use an audio file such as MP3, M4A, WAV, OGG or WEBM.";
   }
   if (file.size === 0) return 'That file is empty.';

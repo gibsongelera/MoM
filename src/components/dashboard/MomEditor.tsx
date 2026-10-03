@@ -1,32 +1,48 @@
 'use client';
 
 /**
- * Port of secretary/mom-editor.html.
+ * Minutes of the Meeting editor — CHED format.
  *
- * The legacy version hand-rolls the lock/amend state machine in client JS
- * (clear the Head's signature, revert status, log an amendment, notify the
- * chair - all as separate localStorage writes that could partially fail).
- * Here that whole sequence is one call to the amend_minutes() database
- * function (0003_functions.sql), which does it as a single transaction.
- * route_minutes_for_approval() and sign_minutes() are the same story for the
- * non-locked save path and signing.
+ * The body follows the order of business of CHED Administrative Order
+ * No. 06, s. 2014 (src/lib/minutes/ched.ts): I. Preliminaries (A–G),
+ * II. New Business (matters for approval by category), III. Matters for
+ * Confirmation, IV. Other Matters, V. Adjournment — on a ZPPSU + CHED
+ * letterhead, with the matrix of action items as Annex A. "Download PDF" and
+ * "Download Word" produce the same document (/api/minutes/[id]/export).
  *
- * ai_action_items (staged on the minutes row by the webhook - see
- * 0010_minutes_ai_action_items.sql) are Claude's free-text extraction
- * (assignee as a name string, deadline as a spoken phrase) - "Convert to
- * Task" is the human resolution step that turns one into a real tasks row
- * with a real assignee_id and a real date, exactly the gap flagged when
- * that column was added.
+ * Workflow state is unchanged: the lock/amend sequence is one call to
+ * amend_minutes(), routing is route_minutes_for_approval(), signing is
+ * sign_minutes() (all SECURITY DEFINER, 0003/0011/0015). Storage stays
+ * backward compatible (call_to_order / previous_minutes / adjournment
+ * columns + sectioned agenda_items), so older minutes open in this editor.
+ *
+ * ai_action_items (staged on the minutes row by transcription) are Claude's
+ * free-text extraction; "Convert to task" turns one into a real tasks row
+ * with a real assignee and date.
  */
-import { useState, type FormEvent } from 'react';
+import { useMemo, useState, type FormEvent } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { docTitleFor } from '@/lib/ai/doc-title';
 import type { MeetingType } from '@/lib/types/domain';
 import type { PaperNote } from '@/lib/meetings/printable';
-import { fmtManila } from '@/lib/utils/datetime';
+import {
+  CATEGORY_LABEL,
+  CATEGORY_ORDER,
+  LETTERHEAD,
+  PRELIMINARY,
+  joinMinutes,
+  splitMinutes,
+  type BusinessItem,
+  type ChedCategory,
+  type ChedMinutes,
+  type MinutesItem,
+  type PreliminaryField,
+} from '@/lib/minutes/ched';
+import { fmtManila, fmtManilaTime } from '@/lib/utils/datetime';
 import { humanize } from '@/lib/ui/status';
+import { cn } from '@/lib/ui/cn';
 import { Button, buttonClasses } from '@/components/ui/Button';
 import { Dialog } from '@/components/ui/Dialog';
 import { Icon } from '@/components/ui/Icon';
@@ -53,10 +69,7 @@ export interface MeetingDetail {
   panelNames: string[];
 }
 
-export interface AgendaItem {
-  title: string;
-  notes: string;
-}
+export type AgendaItem = MinutesItem;
 export interface Signature {
   userId: string;
   name: string;
@@ -120,6 +133,8 @@ export interface TeamMember {
   name: string;
 }
 
+type ListKey = 'newBusiness' | 'confirmation' | 'other';
+
 function emptyMinutes(): MinutesDetail {
   return {
     id: null,
@@ -136,6 +151,10 @@ function emptyMinutes(): MinutesDetail {
     paper_notes: [],
   };
 }
+
+const fieldClass =
+  'w-full rounded-md border border-outline bg-white px-sm py-xs font-[Arial,Helvetica,sans-serif] text-[10.5pt] leading-snug text-black ' +
+  'placeholder:text-on-surface-variant/70 focus:border-primary focus:ring-1 focus:ring-primary';
 
 export default function MomEditor({
   meeting,
@@ -155,14 +174,18 @@ export default function MomEditor({
   panelPhotos?: PanelNotesPhoto[];
 }) {
   const router = useRouter();
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
   const toast = useToast();
   const [printPrompt, setPrintPrompt] = useState(false);
   const [readingPhotoId, setReadingPhotoId] = useState<string | null>(null);
 
   const [minutes, setMinutes] = useState<MinutesDetail>(initialMinutes ?? emptyMinutes());
+  const [ched, setChed] = useState<ChedMinutes>(() => splitMinutes(initialMinutes ?? {}));
+  const [savedBody, setSavedBody] = useState(() => JSON.stringify(joinMinutes(splitMinutes(initialMinutes ?? {}))));
+  const dirty = JSON.stringify(joinMinutes(ched)) !== savedBody || !minutes.id;
   const wasLocked = Boolean(initialMinutes?.locked_at);
   const [saving, setSaving] = useState(false);
+  const [exporting, setExporting] = useState<'pdf' | 'docx' | null>(null);
   const [signing, setSigning] = useState(false);
   const [signatureDraft, setSignatureDraft] = useState<string | null>(null);
   const [showSignPad, setShowSignPad] = useState(false);
@@ -178,18 +201,21 @@ export default function MomEditor({
   const mySignature = minutes.signatures.find((s) => s.userId === currentUserId);
   const headSignature = minutes.signatures.find((s) => s.userId === meeting.chairId);
 
-  function updateAgenda(i: number, key: 'title' | 'notes', value: string) {
-    setMinutes((m) => ({
-      ...m,
-      agenda_items: m.agenda_items.map((a, idx) => (idx === i ? { ...a, [key]: value } : a)),
-    }));
-  }
-  function addAgenda() {
-    setMinutes((m) => ({ ...m, agenda_items: [...m.agenda_items, { title: 'New Agenda Item', notes: '' }] }));
-  }
-  function removeAgenda(i: number) {
-    setMinutes((m) => ({ ...m, agenda_items: m.agenda_items.filter((_, idx) => idx !== i) }));
-  }
+  // ---- body editing -------------------------------------------------------
+  const setPrelim = (field: PreliminaryField, value: string) => setChed((c) => ({ ...c, preliminary: { ...c.preliminary, [field]: value } }));
+  const updateItem = (list: ListKey, i: number, patch: Partial<BusinessItem>) =>
+    setChed((c) => ({ ...c, [list]: c[list].map((it, idx) => (idx === i ? { ...it, ...patch } : it)) }));
+  const addItem = (list: ListKey) =>
+    setChed((c) => ({ ...c, [list]: [...c[list], { title: '', notes: '', action: '', category: list === 'newBusiness' ? 'academic' : null }] }));
+  const removeItem = (list: ListKey, i: number) => setChed((c) => ({ ...c, [list]: c[list].filter((_, idx) => idx !== i) }));
+  const moveItem = (list: ListKey, i: number, dir: -1 | 1) =>
+    setChed((c) => {
+      const next = [...c[list]];
+      const j = i + dir;
+      if (j < 0 || j >= next.length) return c;
+      [next[i], next[j]] = [next[j], next[i]];
+      return { ...c, [list]: next };
+    });
 
   /**
    * Inserts the row on first save, updates it thereafter. Returns the minutes id.
@@ -202,23 +228,19 @@ export default function MomEditor({
    */
   async function ensureSaved(): Promise<string> {
     if (minutes.id && wasLocked) return minutes.id;
-
-    const payload = {
-      meeting_id: meeting.id,
-      document_title: docTitle,
-      call_to_order: minutes.call_to_order,
-      previous_minutes: minutes.previous_minutes,
-      agenda_items: minutes.agenda_items,
-      adjournment: minutes.adjournment,
-    };
+    const body = joinMinutes(ched);
+    const payload = { meeting_id: meeting.id, document_title: docTitle, ...body };
     if (minutes.id) {
-      const { error: updateError } = await supabase.from('minutes').update(payload).eq('id', minutes.id);
+      const { data, error: updateError } = await supabase.from('minutes').update(payload).eq('id', minutes.id).select('id');
       if (updateError) throw updateError;
+      if (!data?.length) throw new Error('These minutes are locked or no longer editable. Reload the page.');
+      setSavedBody(JSON.stringify(body));
       return minutes.id;
     }
     const { data, error: insertError } = await supabase.from('minutes').insert(payload).select('id').single();
     if (insertError) throw insertError;
     setMinutes((m) => ({ ...m, id: data.id }));
+    setSavedBody(JSON.stringify(body));
     return data.id;
   }
 
@@ -234,14 +256,14 @@ export default function MomEditor({
       const id = await ensureSaved();
       const { data, error: signError } = await supabase.rpc('sign_minutes', {
         p_minutes_id: id,
-        p_role_label: 'Faculty Secretary',
+        p_role_label: 'Secretary',
         p_data_url: signatureDraft,
       });
       if (signError) throw signError;
       if (data) setMinutes((m) => ({ ...m, signatures: data.signatures }));
       setShowSignPad(false);
       setSignatureDraft(null);
-      setNotice('Signed. Save & Route to send this to the Head for approval.');
+      setNotice('Signed. Save and route to send this to the Head for approval.');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not sign.');
     } finally {
@@ -263,6 +285,27 @@ export default function MomEditor({
       setError(err instanceof Error ? err.message : 'Could not save.');
     } finally {
       setSaving(false);
+    }
+  }
+
+  /** PDF / Word download of the saved document; unsaved edits are saved first (never on a locked record). */
+  async function download(format: 'pdf' | 'docx') {
+    setExporting(format);
+    setError(null);
+    try {
+      if (!minutes.id || (dirty && !wasLocked)) await ensureSaved();
+      if (dirty && wasLocked) toast.info('Downloading the approved version. Your unsaved amendment is not in the file until you save and route it.');
+      const a = document.createElement('a');
+      a.href = `/api/minutes/${meeting.id}/export?format=${format}`;
+      a.rel = 'noopener';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      toast.success(format === 'pdf' ? 'Preparing the PDF download…' : 'Preparing the Word download…');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not prepare the download.');
+    } finally {
+      setExporting(null);
     }
   }
 
@@ -310,16 +353,18 @@ export default function MomEditor({
         // requires locked_at is null), so the edited body has to travel
         // through amend_minutes() itself rather than a plain table update -
         // otherwise it silently no-ops and the edits are lost.
+        const body = joinMinutes(ched);
         const { data, error: amendError } = await supabase.rpc('amend_minutes', {
           p_minutes_id: minutes.id,
           p_summary: 'Minutes edited after lock; re-approval required.',
-          p_call_to_order: minutes.call_to_order,
-          p_previous_minutes: minutes.previous_minutes,
-          p_agenda_items: minutes.agenda_items,
-          p_adjournment: minutes.adjournment,
+          p_call_to_order: body.call_to_order,
+          p_previous_minutes: body.previous_minutes,
+          p_agenda_items: body.agenda_items,
+          p_adjournment: body.adjournment,
         });
         if (amendError) throw amendError;
         if (data) setMinutes((m) => ({ ...m, ...data }));
+        setSavedBody(JSON.stringify(body));
         setNotice('Amendment saved. The Head has been notified to re-approve.');
       } else {
         const id = await ensureSaved();
@@ -391,206 +436,246 @@ export default function MomEditor({
     router.refresh();
   }
 
-  const projectMeta = meeting.meeting_type !== 'regular';
+  const meta: [string, string][] = [
+    ['Subject', docTitle],
+    ['Date', fmtManila(meeting.starts_at, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })],
+    ['Time', fmtManilaTime(meeting.starts_at)],
+    ['Venue', meeting.venue ?? '—'],
+    ['Presiding', meeting.chairName ?? '—'],
+    ['Secretary', meeting.secretaryName ?? currentUserName],
+  ];
+  if (meeting.meeting_type !== 'regular') {
+    meta.push([meeting.meeting_type === 'capstone' ? 'Capstone' : 'Research', meeting.sub_type ?? '—']);
+    if (meeting.project_title) meta.push(['Project', meeting.project_title]);
+    if (meeting.meeting_type === 'capstone' && meeting.chairpersonName) meta.push(['Chairperson', meeting.chairpersonName]);
+    if (meeting.meeting_type === 'capstone' && meeting.panelNames.length) meta.push(['Panel', meeting.panelNames.join('; ')]);
+    if (meeting.adviserName) meta.push(['Adviser', meeting.adviserName]);
+  }
 
   return (
     <>
-      <header className="flex items-center justify-between flex-wrap gap-md mb-lg no-print">
+      <div className="no-print mb-lg flex flex-wrap items-center justify-between gap-md">
         <div>
           <h1 className="font-h1 text-h1">Minutes editor</h1>
           <p className="font-body-md text-on-surface-variant">
-            {meeting.title} · {fmtManila(meeting.starts_at)}
+            {meeting.title} · {fmtManila(meeting.starts_at)} · CHED format (AO No. 06, s. 2014)
           </p>
         </div>
-        <div className="flex gap-sm flex-wrap">
-          <a href={`/print/meetings/${meeting.id}`} target="_blank" rel="noreferrer" className={buttonClasses('secondary')}>
+        <div className="flex flex-wrap gap-sm">
+          <a href={`/print/meetings/${meeting.id}`} target="_blank" rel="noreferrer" className={buttonClasses('secondary', 'md', 'pl-sm')}>
             <Icon name="print" size={18} /> Preview and print
           </a>
-          <Button variant="secondary" icon="save" onClick={handleSaveDraft} disabled={saving || wasLocked} title={wasLocked ? 'Approved minutes change only through “Save and route” (an amendment).' : undefined}>
+          <Button variant="secondary" icon="picture_as_pdf" onClick={() => download('pdf')} loading={exporting === 'pdf'} disabled={exporting !== null}>
+            Download PDF
+          </Button>
+          <Button variant="secondary" icon="description" onClick={() => download('docx')} loading={exporting === 'docx'} disabled={exporting !== null}>
+            Download Word
+          </Button>
+          <Button
+            variant="secondary"
+            icon="save"
+            onClick={handleSaveDraft}
+            disabled={saving || wasLocked}
+            title={wasLocked ? 'Approved minutes change only through “Save and route” (an amendment).' : undefined}
+          >
             Save draft
           </Button>
           <Button icon="send" onClick={handleSaveAndRoute} loading={saving}>
             Save and route for approval
           </Button>
         </div>
-      </header>
+      </div>
 
-      {error ? <div role="alert" className="no-print mb-md bg-error-container text-on-error-container rounded-lg p-sm font-body-sm">{error}</div> : null}
-      {notice ? <div role="status" className="no-print mb-md bg-success-container text-on-success-container rounded-lg p-sm font-body-sm">{notice}</div> : null}
+      {error ? (
+        <div role="alert" className="no-print mb-md rounded-lg bg-error-container p-sm font-body-sm text-on-error-container">
+          {error}
+        </div>
+      ) : null}
+      {notice ? (
+        <div role="status" className="no-print mb-md rounded-lg bg-success-container p-sm font-body-sm text-on-success-container">
+          {notice}
+        </div>
+      ) : null}
+      {dirty && minutes.id ? (
+        <p className="no-print mb-md inline-flex items-center gap-xs rounded-full bg-tertiary-fixed/50 px-sm py-xs font-caption text-caption text-on-tertiary-fixed-variant" role="status">
+          <Icon name="edit" size={14} /> Unsaved changes
+        </p>
+      ) : null}
 
       {minutes.locked_at ? (
-        <div className="amend-banner mb-md no-print">
-          <span aria-hidden="true" translate="no" className="material-symbols-outlined">edit_note</span>
+        <div className="amend-banner no-print mb-md">
+          <Icon name="edit_note" />
           <div>
             <p className="font-semibold">This document is locked by the Head&apos;s approval.</p>
             <p className="font-caption text-caption">
-              Saving any change will clear the Head&apos;s signature, revert status to pending approval, and notify them to
-              re-approve. Every amendment is recorded.
+              Saving any change will clear the Head&apos;s signature, revert status to pending approval, and notify them to re-approve. Every amendment is
+              recorded.
             </p>
           </div>
         </div>
       ) : null}
 
       {minutes.amendments.length > 0 ? (
-        <details className="no-print bg-surface-container-low border border-outline-variant rounded-lg p-md mb-md">
-          <summary className="cursor-pointer font-semibold flex items-center gap-sm">
-            <span aria-hidden="true" translate="no" className="material-symbols-outlined text-tertiary">history_edu</span> Amendment History ({minutes.amendments.length})
+        <details className="no-print mb-md rounded-lg border border-outline-variant bg-surface-container-low p-md">
+          <summary className="flex cursor-pointer items-center gap-sm font-semibold">
+            <Icon name="history_edu" className="text-tertiary" /> Amendment history ({minutes.amendments.length})
           </summary>
           <ul className="mt-sm space-y-xs">
             {[...minutes.amendments].reverse().map((a, i) => (
               <li key={i} className="text-body-sm">
                 <span className="font-semibold">{a.byName}</span>
-                <span className="text-on-surface-variant"> · {new Date(a.ts).toLocaleString()}</span>
-                <p className="text-on-surface-variant ml-md">{a.summary}</p>
+                <span className="text-on-surface-variant"> · {fmtManila(new Date(a.ts).toISOString())}</span>
+                <p className="ml-md text-on-surface-variant">{a.summary}</p>
               </li>
             ))}
           </ul>
         </details>
       ) : null}
 
-      <div className="ched-doc">
-        <div className="text-center border-b-2 border-primary pb-md mb-lg">
-          <div className="w-16 h-16 mx-auto mb-sm rounded-full bg-primary text-on-primary flex items-center justify-center shadow-primary-md">
-            <span aria-hidden="true" translate="no" className="material-symbols-outlined text-[28px]" style={{ fontVariationSettings: "'FILL' 1" }}>
-              account_balance
-            </span>
+      <div className="ched-doc ched-paper text-[10.5pt] leading-snug text-black">
+        {/* Letterhead (a div: the print stylesheet hides <header> elements) */}
+        <div className="flex items-center justify-between gap-md border-b-[3px] border-double border-primary pb-sm">
+          {/* eslint-disable-next-line @next/next/no-img-element -- document letterhead, same asset as the PDF/Word export */}
+          <img src={LETTERHEAD.zppsuLogo} alt="ZPPSU seal" className="h-[76px] w-[76px] shrink-0 object-contain" />
+          <div className="min-w-0 flex-1 text-center">
+            <p className="text-[10pt]">{LETTERHEAD.republic}</p>
+            <p className="text-[12.5pt] font-bold uppercase leading-tight text-primary">{LETTERHEAD.university}</p>
+            <p className="text-[9pt] text-[#333]">{LETTERHEAD.address}</p>
+            {meeting.departmentName ? <p className="mt-[2px] text-[10.5pt] font-bold uppercase">{meeting.departmentName}</p> : null}
           </div>
-          <p className="font-label-caps text-label-caps text-on-surface-variant uppercase tracking-widest mb-xs">
-            Zamboanga Peninsula Polytechnic State University
-          </p>
-          <p className="font-h2 text-h2 text-primary font-bold uppercase">{meeting.departmentName ?? ''}</p>
-          <h2 className="font-h1 text-h1 mt-sm">{docTitle}</h2>
-          <p className="font-h3 text-h3 text-on-surface-variant mt-xs">{meeting.title}</p>
+          {/* eslint-disable-next-line @next/next/no-img-element -- document letterhead, same asset as the PDF/Word export */}
+          <img src={LETTERHEAD.chedLogo} alt="Commission on Higher Education seal" className="h-[76px] w-[76px] shrink-0 object-contain" />
         </div>
 
-        <div className="grid grid-cols-2 gap-md mb-md text-body-md">
-          <p>
-            <strong className="text-on-surface-variant">Date:</strong> {fmtManila(meeting.starts_at)}
-          </p>
-          <p>
-            <strong className="text-on-surface-variant">Venue:</strong> {meeting.venue ?? '—'}
-          </p>
-          <p>
-            <strong className="text-on-surface-variant">Presiding Officer:</strong> {meeting.chairName ?? '—'}
-          </p>
-          <p>
-            <strong className="text-on-surface-variant">Secretary:</strong> {meeting.secretaryName ?? '—'}
-          </p>
-        </div>
+        <h2 className="mt-md text-[12.5pt] font-bold uppercase">Minutes of the Meeting</h2>
+        <table className="mt-xs w-full border-collapse">
+          <tbody>
+            {meta.map(([label, value]) => (
+              <tr key={label} className="align-top">
+                <th scope="row" className="w-[118px] py-[1px] pr-sm text-left font-normal uppercase">
+                  {label}
+                </th>
+                <td className="w-[14px] py-[1px]">:</td>
+                <td className={cn('py-[1px]', label === 'Subject' && 'font-bold uppercase')}>{value}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        <p className="no-print mt-xs font-caption text-caption text-on-surface-variant">
+          Attendance is taken on the meeting page and printed under the details.{' '}
+          <Link href={`/secretary/meetings/${meeting.id}?step=attendance`} className="font-semibold text-primary hover:underline">
+            Open attendance
+          </Link>
+        </p>
+        <hr className="my-sm border-t border-black" />
 
-        {projectMeta ? (
-          <div className="mb-xl bg-tertiary-fixed/30 border border-tertiary-container/40 rounded-lg p-md">
-            <p className="font-label-caps text-label-caps text-tertiary mb-sm flex items-center gap-xs">
-              <span aria-hidden="true" translate="no" className="material-symbols-outlined text-[16px]">school</span>
-              {meeting.meeting_type === 'capstone' ? 'Capstone' : 'Research'} Defense Details
-            </p>
-            <div className="grid grid-cols-2 gap-md text-body-sm">
-              <p>
-                <strong className="text-on-surface-variant">Project Title:</strong> {meeting.project_title ?? '—'}
-              </p>
-              <p>
-                <strong className="text-on-surface-variant">Sub-Type:</strong> {meeting.sub_type ?? '—'}
-              </p>
-              {meeting.meeting_type === 'capstone' ? (
-                <p>
-                  <strong className="text-on-surface-variant">Chairperson:</strong> {meeting.chairpersonName ?? '—'}
-                </p>
-              ) : null}
-              <p>
-                <strong className="text-on-surface-variant">Adviser:</strong> {meeting.adviserName ?? '—'}
-              </p>
-              {meeting.meeting_type === 'capstone' ? (
-                <p className="col-span-2">
-                  <strong className="text-on-surface-variant">Panel Members:</strong> {meeting.panelNames.join(', ') || '—'}
-                </p>
-              ) : null}
+        {/* I. PRELIMINARIES */}
+        <ChedSection numeral="I." title="Preliminaries">
+          {PRELIMINARY.map((p) => (
+            <div key={p.field} className="mt-sm">
+              <label htmlFor={`prelim-${p.field}`} className="flex font-bold">
+                <span className="inline-block min-w-[2.2em]">{p.letter}.</span>
+                {p.label}
+              </label>
+              <p className="no-print pl-[2.2em] font-caption text-caption text-on-surface-variant">{p.hint}</p>
+              <div className="pl-[2.2em]">
+                <textarea
+                  id={`prelim-${p.field}`}
+                  rows={p.field === 'head_report' ? 3 : 2}
+                  value={ched.preliminary[p.field]}
+                  onChange={(e) => setPrelim(p.field, e.target.value)}
+                  placeholder={p.field === 'quorum' ? 'Leave blank to print the recorded head-count from attendance.' : 'None.'}
+                  className={cn(fieldClass, 'mt-xs')}
+                />
+              </div>
             </div>
-          </div>
-        ) : null}
+          ))}
+        </ChedSection>
 
-        <section className="mb-lg">
-          <h3 id="sec-call-to-order" className="font-h3 text-h3 text-primary mb-sm flex items-center gap-sm">
-            <Icon name="gavel" size={24} className="text-outline" /> 1. Call to order
-          </h3>
-          <textarea
-            aria-labelledby="sec-call-to-order"
-            rows={3}
-            value={minutes.call_to_order}
-            onChange={(e) => setMinutes((m) => ({ ...m, call_to_order: e.target.value }))}
-            className="w-full p-sm border border-outline-variant rounded-lg focus:border-primary focus:ring-0"
+        {/* II. NEW BUSINESS */}
+        <ChedSection numeral="II." title="New Business">
+          <p className="mt-sm flex font-bold">
+            <span className="inline-block min-w-[2.2em]">A.</span>Matters for Approval
+          </p>
+          <p className="no-print pl-[2.2em] font-caption text-caption text-on-surface-variant">
+            Each matter taken up: its category (grouped in CHED order on the printed copy), the discussion, and the action taken.
+          </p>
+          <ItemList
+            list="newBusiness"
+            items={ched.newBusiness}
+            withCategory
+            addLabel="Add a matter"
+            emptyText="No matters yet."
+            onUpdate={updateItem}
+            onRemove={removeItem}
+            onMove={moveItem}
+            onAdd={addItem}
           />
-        </section>
+        </ChedSection>
 
-        <section className="mb-lg">
-          <h3 id="sec-previous" className="font-h3 text-h3 text-primary mb-sm flex items-center gap-sm">
-            <Icon name="history" size={24} className="text-outline" /> 2. Approval of previous minutes
-          </h3>
-          <textarea
-            aria-labelledby="sec-previous"
-            rows={3}
-            value={minutes.previous_minutes}
-            onChange={(e) => setMinutes((m) => ({ ...m, previous_minutes: e.target.value }))}
-            className="w-full p-sm border border-outline-variant rounded-lg focus:border-primary focus:ring-0"
+        {/* III. MATTERS FOR CONFIRMATION */}
+        <ChedSection numeral="III." title="Matters for Confirmation">
+          <ItemList
+            list="confirmation"
+            items={ched.confirmation}
+            addLabel="Add a matter for confirmation"
+            emptyText="None."
+            onUpdate={updateItem}
+            onRemove={removeItem}
+            onMove={moveItem}
+            onAdd={addItem}
           />
-        </section>
+        </ChedSection>
 
-        <section className="mb-xl">
-          <div className="flex items-center justify-between mb-md">
-            <h3 className="font-h3 text-h3 text-primary flex items-center gap-sm">
-              <span aria-hidden="true" translate="no" className="material-symbols-outlined text-outline">list_alt</span> 3. Agenda Items &amp; Discussions
-            </h3>
-            <button onClick={addAgenda} className="no-print text-primary hover:underline font-label-caps text-label-caps flex items-center gap-xs">
-              <span aria-hidden="true" translate="no" className="material-symbols-outlined text-[16px]">add</span> Add Item
-            </button>
-          </div>
-          <div className="space-y-md">
-            {minutes.agenda_items.length === 0 ? (
-              <p className="text-on-surface-variant italic">No agenda items yet. Add one above.</p>
-            ) : (
-              minutes.agenda_items.map((a, i) => (
-                <div key={i} className="glass-panel border-l-4 border-l-tertiary-container rounded-r-lg p-md relative">
-                  <button
-                    type="button"
-                    onClick={() => removeAgenda(i)}
-                    aria-label={`Remove agenda item ${i + 1}`}
-                    className="no-print absolute top-sm right-sm flex h-8 w-8 items-center justify-center rounded-lg text-on-surface-variant hover:bg-error/10 hover:text-error"
-                  >
-                    <Icon name="close" size={18} />
-                  </button>
-                  <input
-                    aria-label={`Agenda item ${i + 1} title`}
-                    value={a.title}
-                    onChange={(e) => updateAgenda(i, 'title', e.target.value)}
-                    className="font-body-lg font-semibold bg-transparent border-0 focus:bg-surface-container-low focus:ring-1 focus:ring-primary rounded px-xs w-full mb-xs"
-                  />
-                  <textarea
-                    aria-label={`Agenda item ${i + 1} discussion`}
-                    rows={3}
-                    value={a.notes}
-                    onChange={(e) => updateAgenda(i, 'notes', e.target.value)}
-                    className="w-full bg-transparent border-0 focus:bg-surface-container-low focus:ring-1 focus:ring-primary rounded p-sm"
-                  />
-                </div>
-              ))
-            )}
-          </div>
-        </section>
+        {/* IV. OTHER MATTERS */}
+        <ChedSection numeral="IV." title="Other Matters">
+          <ItemList
+            list="other"
+            items={ched.other}
+            addLabel="Add another matter"
+            emptyText="None."
+            onUpdate={updateItem}
+            onRemove={removeItem}
+            onMove={moveItem}
+            onAdd={addItem}
+          />
+        </ChedSection>
+
+        {/* V. ADJOURNMENT */}
+        <ChedSection numeral="V." title="Adjournment">
+          <label htmlFor="adjournment" className="sr-only">
+            Adjournment
+          </label>
+          <textarea
+            id="adjournment"
+            rows={2}
+            value={ched.adjournment}
+            onChange={(e) => setChed((c) => ({ ...c, adjournment: e.target.value }))}
+            placeholder="There being no other matters, the meeting was adjourned at …"
+            className={cn(fieldClass, 'mt-xs')}
+          />
+        </ChedSection>
 
         {minutes.ai_action_items.length > 0 ? (
-          <section className="mb-xl no-print">
-            <h3 className="font-h3 text-h3 text-primary mb-md flex items-center gap-sm">
-              <span aria-hidden="true" translate="no" className="material-symbols-outlined text-outline">auto_awesome</span> AI-Suggested Action Items
+          <section className="no-print mb-lg rounded-lg border border-tertiary-container/40 bg-tertiary-fixed/20 p-md font-body-sm">
+            <h3 className="mb-sm flex items-center gap-sm font-h3 text-h3 text-primary">
+              <Icon name="auto_awesome" className="text-outline" /> AI-suggested action items
             </h3>
             <div className="space-y-sm">
               {minutes.ai_action_items.map((item, i) => (
-                <div key={i} className="bg-tertiary-fixed/20 border border-tertiary-container/30 rounded-lg p-sm">
+                <div key={i} className="rounded-lg border border-tertiary-container/30 bg-white p-sm">
                   <p className="font-body-sm">{item.text}</p>
-                  <p className="font-caption text-caption text-on-surface-variant mt-xs">
+                  <p className="mt-xs font-caption text-caption text-on-surface-variant">
                     Suggested assignee: {item.assignee || '—'} {item.deadline ? `· ${item.deadline}` : ''}
                   </p>
                   {convertingIndex === i ? (
-                    <div className="flex flex-wrap gap-xs mt-xs items-center">
-                      <select aria-label="Assign to" value={convertAssignee} onChange={(e) => setConvertAssignee(e.target.value)} className="rounded-lg border-outline-variant bg-surface-container-lowest text-body-sm">
+                    <div className="mt-xs flex flex-wrap items-center gap-xs">
+                      <select
+                        aria-label="Assign to"
+                        value={convertAssignee}
+                        onChange={(e) => setConvertAssignee(e.target.value)}
+                        className="rounded-lg border-outline-variant bg-surface-container-lowest text-body-sm"
+                      >
                         <option value="">Assign to...</option>
                         {team.map((t) => (
                           <option key={t.id} value={t.id}>
@@ -598,17 +683,23 @@ export default function MomEditor({
                           </option>
                         ))}
                       </select>
-                      <input aria-label="Deadline" type="date" value={convertDeadline} onChange={(e) => setConvertDeadline(e.target.value)} className="rounded-lg border-outline-variant bg-surface-container-lowest text-body-sm" />
-                      <button onClick={() => convertActionItem(i)} className="bg-primary text-on-primary px-sm py-xs rounded-lg text-body-sm font-semibold">
-                        Create Task
-                      </button>
-                      <button onClick={() => setConvertingIndex(null)} className="text-on-surface-variant text-body-sm">
+                      <input
+                        aria-label="Deadline"
+                        type="date"
+                        value={convertDeadline}
+                        onChange={(e) => setConvertDeadline(e.target.value)}
+                        className="rounded-lg border-outline-variant bg-surface-container-lowest text-body-sm"
+                      />
+                      <Button size="sm" onClick={() => convertActionItem(i)}>
+                        Create task
+                      </Button>
+                      <Button size="sm" variant="ghost" onClick={() => setConvertingIndex(null)}>
                         Cancel
-                      </button>
+                      </Button>
                     </div>
                   ) : (
-                    <button onClick={() => setConvertingIndex(i)} className="text-primary hover:underline font-label-caps text-label-caps mt-xs">
-                      Convert to Task
+                    <button onClick={() => setConvertingIndex(i)} className="mt-xs font-label-caps text-label-caps text-primary hover:underline">
+                      Convert to task
                     </button>
                   )}
                 </div>
@@ -617,85 +708,40 @@ export default function MomEditor({
           </section>
         ) : null}
 
-        <section className="mb-xl">
-          <h3 className="font-h3 text-h3 text-primary mb-md flex items-center gap-sm">
-            <span aria-hidden="true" translate="no" className="material-symbols-outlined text-outline">assignment_turned_in</span> 4. Action Items
-          </h3>
-          <table className="w-full text-left text-body-sm">
-            <thead>
-              <tr className="border-b-2 border-outline-variant text-on-surface-variant font-label-caps text-label-caps uppercase">
-                <th className="py-sm px-md">Task</th>
-                <th className="py-sm px-md">Assignee</th>
-                <th className="py-sm px-md">Deadline</th>
-                <th className="py-sm px-md">Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {tasks.length === 0 ? (
-                <tr>
-                  <td colSpan={4} className="py-md text-center text-on-surface-variant">
-                    No action items.
-                  </td>
-                </tr>
-              ) : (
-                tasks.map((t) => (
-                  <tr key={t.id} className="border-b border-outline-variant/50">
-                    <td className="py-sm px-md">{t.title}</td>
-                    <td className="py-sm px-md">{t.assignee_name ?? <em className="text-on-surface-variant">Unassigned</em>}</td>
-                    <td className="py-sm px-md">{t.deadline ?? '—'}</td>
-                    <td className="py-sm px-md">
-                      <span className={`pill ${t.status === 'done' ? 'pill-done' : t.status === 'in_progress' ? 'pill-progress' : 'pill-pending'}`}>{humanize(t.status)}</span>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </section>
-
-        <section className="mb-lg">
-          <h3 id="sec-adjournment" className="font-h3 text-h3 text-primary mb-sm">5. Adjournment</h3>
-          <textarea
-            aria-labelledby="sec-adjournment"
-            rows={2}
-            value={minutes.adjournment}
-            onChange={(e) => setMinutes((m) => ({ ...m, adjournment: e.target.value }))}
-            className="w-full p-sm border border-outline-variant rounded-lg focus:border-primary focus:ring-0"
-          />
-        </section>
-
-        <section className="mt-xxl pt-lg border-t border-outline-variant grid grid-cols-1 md:grid-cols-2 gap-xl">
-          <div className="text-center">
-            <div className="h-[80px] mb-xs flex items-end justify-center">
+        <section className="mt-lg grid grid-cols-1 gap-xl md:grid-cols-2">
+          <div>
+            <p>Prepared by:</p>
+            <div className="mb-xs flex h-[76px] items-end justify-center">
               {mySignature ? (
                 // eslint-disable-next-line @next/next/no-img-element -- signature is a canvas-captured data URL, not a static asset
-                <img src={mySignature.dataUrl} alt={`Signature of ${meeting.secretaryName ?? currentUserName}`} className="max-h-[70px]" />
+                <img src={mySignature.dataUrl} alt={`Signature of ${meeting.secretaryName ?? currentUserName}`} className="max-h-[68px]" />
               ) : showSignPad ? null : (
                 <button
                   onClick={() => setShowSignPad(true)}
-                  className="no-print bg-surface border border-dashed border-primary text-primary px-md py-sm rounded-lg hover:bg-primary-fixed/20 flex items-center gap-xs"
+                  className="no-print flex items-center gap-xs rounded-lg border border-dashed border-primary bg-surface px-md py-sm font-body-sm text-primary hover:bg-primary-fixed/20"
                 >
-                  <span aria-hidden="true" translate="no" className="material-symbols-outlined text-[16px]">draw</span> Sign as Secretary
+                  <Icon name="draw" size={16} /> Sign as secretary
                 </button>
               )}
             </div>
-            <div className="border-t border-on-surface-variant w-[80%] mx-auto pt-xs">
-              <p className="font-body-md font-bold">{meeting.secretaryName ?? currentUserName}</p>
-              <p className="font-caption text-caption text-on-surface-variant">Faculty Secretary</p>
+            <div className="border-t border-black pt-[2px] text-center">
+              <p className="font-bold uppercase">{meeting.secretaryName ?? currentUserName}</p>
+              <p className="text-[10pt]">Secretary</p>
             </div>
           </div>
-          <div className="text-center">
-            <div className="h-[80px] mb-xs flex items-end justify-center">
+          <div>
+            <p>Noted and approved by:</p>
+            <div className="mb-xs flex h-[76px] items-end justify-center">
               {headSignature ? (
                 // eslint-disable-next-line @next/next/no-img-element -- signature is a canvas-captured data URL, not a static asset
-                <img src={headSignature.dataUrl} alt={`Signature of ${meeting.chairName ?? 'the head'}`} className="max-h-[70px]" />
+                <img src={headSignature.dataUrl} alt={`Signature of ${meeting.chairName ?? 'the head'}`} className="max-h-[68px]" />
               ) : (
-                <span className="italic text-on-surface-variant text-body-sm">Awaiting Head&apos;s signature</span>
+                <span className="text-[9.5pt] italic text-[#555]">Awaiting the Head&apos;s approval</span>
               )}
             </div>
-            <div className="border-t border-on-surface-variant w-[80%] mx-auto pt-xs">
-              <p className="font-body-md font-bold">{meeting.chairName ?? '—'}</p>
-              <p className="font-caption text-caption text-on-surface-variant">Presiding Officer / Dean</p>
+            <div className="border-t border-black pt-[2px] text-center">
+              <p className="font-bold uppercase">{meeting.chairName ?? '—'}</p>
+              <p className="text-[10pt]">{meeting.departmentName ? `Head, ${meeting.departmentName}` : 'Department Head'}</p>
             </div>
           </div>
         </section>
@@ -703,16 +749,50 @@ export default function MomEditor({
         {showSignPad ? (
           <div className="no-print mt-md border-t border-outline-variant pt-md">
             <SignaturePad onChange={setSignatureDraft} />
-            <div className="flex justify-end gap-sm mt-sm">
-              <button onClick={() => setShowSignPad(false)} className="px-md py-sm font-label-caps text-label-caps text-on-surface-variant">
+            <div className="mt-sm flex justify-end gap-sm">
+              <Button variant="ghost" onClick={() => setShowSignPad(false)}>
                 Cancel
-              </button>
-              <button onClick={handleSign} disabled={signing} className="bg-primary text-on-primary px-md py-sm rounded-lg shadow-primary-md font-semibold disabled:opacity-60">
-                {signing ? 'Signing...' : 'Confirm Signature'}
-              </button>
+              </Button>
+              <Button onClick={handleSign} loading={signing}>
+                Confirm signature
+              </Button>
             </div>
           </div>
         ) : null}
+
+        <section className="mt-xl border-t border-black pt-md">
+          <h3 className="text-[11pt] font-bold uppercase">Annex A — Matrix of Action Items</h3>
+          <table className="mt-xs w-full border-collapse text-[10pt]">
+            <thead>
+              <tr className="bg-[#f2f2f2]">
+                {['No.', 'Action item', 'Responsible', 'Deadline', 'Status'].map((h) => (
+                  <th key={h} scope="col" className="border border-black px-xs py-[3px] text-left">
+                    {h}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {tasks.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="border border-black px-xs py-sm text-center italic text-[#555]">
+                    No action items yet. Convert an AI suggestion above, or delegate tasks from the meeting.
+                  </td>
+                </tr>
+              ) : (
+                tasks.map((t, i) => (
+                  <tr key={t.id} className="align-top">
+                    <td className="border border-black px-xs py-[3px]">{i + 1}</td>
+                    <td className="border border-black px-xs py-[3px]">{t.title}</td>
+                    <td className="border border-black px-xs py-[3px]">{t.assignee_name ?? <em>Unassigned</em>}</td>
+                    <td className="border border-black px-xs py-[3px]">{t.deadline ?? '—'}</td>
+                    <td className="border border-black px-xs py-[3px]">{humanize(t.status)}</td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </section>
       </div>
 
       <section aria-labelledby="panel-notes-heading" className="no-print mt-lg rounded-xl border border-outline-variant bg-surface-container-lowest p-md">
@@ -725,8 +805,8 @@ export default function MomEditor({
           </Link>
         </div>
         <p className="mb-md font-body-sm text-on-surface-variant">
-          Photos of the panel&apos;s handwritten notes are kept with the meeting. Read them with AI to add the text here; it prints in
-          the annex, separate from what was said in the recording.
+          Photos of the panel&apos;s handwritten notes are kept with the meeting. Read them with AI to add the text here; it prints as an annex, separate from
+          what was said in the recording.
         </p>
         {panelPhotos.length ? (
           <ul className="mb-md flex flex-col gap-sm">
@@ -758,19 +838,19 @@ export default function MomEditor({
         ) : null}
       </section>
 
-      <section className="comments-panel mt-lg bg-surface-container-lowest border border-outline-variant rounded-xl p-md no-print">
-        <h3 className="font-h3 text-h3 mb-md flex items-center gap-sm">
-          <span aria-hidden="true" translate="no" className="material-symbols-outlined text-primary">forum</span> Comments on this document
+      <section className="comments-panel no-print mt-lg rounded-xl border border-outline-variant bg-surface-container-lowest p-md">
+        <h3 className="mb-md flex items-center gap-sm font-h3 text-h3">
+          <Icon name="forum" className="text-primary" /> Comments on this document
         </h3>
-        <div className="space-y-sm mb-md">
+        <div className="mb-md space-y-sm">
           {minutes.comments.length === 0 ? (
-            <p className="text-on-surface-variant italic">No comments yet.</p>
+            <p className="italic text-on-surface-variant">No comments yet.</p>
           ) : (
             minutes.comments.map((c) => (
               <div key={c.id} className="comment">
                 <p className="font-body-sm font-semibold">{c.name}</p>
-                <p className="font-caption text-caption text-on-surface-variant">{new Date(c.ts).toLocaleString()}</p>
-                <p className="font-body-sm mt-xs">{c.text}</p>
+                <p className="font-caption text-caption text-on-surface-variant">{fmtManila(new Date(c.ts).toISOString())}</p>
+                <p className="mt-xs font-body-sm">{c.text}</p>
               </div>
             ))
           )}
@@ -781,11 +861,11 @@ export default function MomEditor({
             value={commentText}
             onChange={(e) => setCommentText(e.target.value)}
             placeholder="Add a comment for the panel or approvers…"
-            className="flex-1 px-md py-sm rounded-lg bg-surface-container-low border-2 border-transparent focus:border-primary focus:ring-0"
+            className="flex-1 rounded-lg border-2 border-transparent bg-surface-container-low px-md py-sm focus:border-primary focus:ring-0"
           />
-          <button type="submit" disabled={postingComment} className="px-md py-sm rounded-lg bg-primary text-on-primary shadow-primary-md font-label-caps text-label-caps disabled:opacity-60">
+          <Button type="submit" loading={postingComment}>
             Post
-          </button>
+          </Button>
         </form>
       </section>
 
@@ -795,25 +875,187 @@ export default function MomEditor({
         size="sm"
         icon="check_circle"
         title="Minutes saved"
-        description="Print or save them as a PDF now, or come back later — every saved meeting can be printed from Meeting History."
+        description="Download them as PDF or Word, print now, or come back later — every saved meeting can be printed from Meeting History."
         footer={
           <>
-            <Button variant="ghost" onClick={() => { setPrintPrompt(false); toast.info('You can print these minutes anytime from Meeting History.'); }}>
+            <Button
+              variant="ghost"
+              onClick={() => {
+                setPrintPrompt(false);
+                toast.info('You can print these minutes anytime from Meeting History.');
+              }}
+            >
               Later
             </Button>
-            <a href={`/print/meetings/${meeting.id}`} target="_blank" rel="noreferrer" onClick={() => setPrintPrompt(false)} className={buttonClasses('secondary')}>
-              <Icon name="visibility" size={18} /> Preview
-            </a>
-            <a href={`/print/meetings/${meeting.id}?autoprint=1`} target="_blank" rel="noreferrer" onClick={() => setPrintPrompt(false)} className={buttonClasses('primary')}>
+            <Button
+              variant="secondary"
+              icon="picture_as_pdf"
+              onClick={() => {
+                setPrintPrompt(false);
+                void download('pdf');
+              }}
+            >
+              PDF
+            </Button>
+            <Button
+              variant="secondary"
+              icon="description"
+              onClick={() => {
+                setPrintPrompt(false);
+                void download('docx');
+              }}
+            >
+              Word
+            </Button>
+            <a
+              href={`/print/meetings/${meeting.id}?autoprint=1`}
+              target="_blank"
+              rel="noreferrer"
+              onClick={() => setPrintPrompt(false)}
+              className={buttonClasses('primary', 'md', 'pl-sm')}
+            >
               <Icon name="print" size={18} /> Print now
             </a>
           </>
         }
       >
-        {minutes.status !== 'approved' ? (
-          <p className="font-body-sm text-on-surface-variant">Until the head approves them, printouts carry a DRAFT mark.</p>
-        ) : null}
+        {minutes.status !== 'approved' ? <p className="font-body-sm text-on-surface-variant">Until the head approves them, every copy carries a DRAFT mark.</p> : null}
       </Dialog>
     </>
+  );
+}
+
+function ChedSection({ numeral, title, children }: { numeral: string; title: string; children: React.ReactNode }) {
+  return (
+    <section className="mb-md">
+      <h3 className="border border-black bg-[#f2f2f2] px-sm py-[3px] text-[11pt] font-bold">
+        {numeral} {title}
+      </h3>
+      <div className="border-x border-b border-black px-md pb-md pt-xs">{children}</div>
+    </section>
+  );
+}
+
+function ItemList({
+  list,
+  items,
+  withCategory = false,
+  addLabel,
+  emptyText,
+  onUpdate,
+  onRemove,
+  onMove,
+  onAdd,
+}: {
+  list: ListKey;
+  items: BusinessItem[];
+  withCategory?: boolean;
+  addLabel: string;
+  emptyText: string;
+  onUpdate: (list: ListKey, i: number, patch: Partial<BusinessItem>) => void;
+  onRemove: (list: ListKey, i: number) => void;
+  onMove: (list: ListKey, i: number, dir: -1 | 1) => void;
+  onAdd: (list: ListKey) => void;
+}) {
+  return (
+    <div className="pl-[2.2em]">
+      {items.length === 0 ? <p className="mt-xs">{emptyText}</p> : null}
+      <ol className="flex flex-col gap-sm">
+        {items.map((it, i) => (
+          <li key={i} className="mt-sm rounded-md border border-outline-variant bg-surface-container-lowest/60 p-sm">
+            <div className="flex flex-wrap items-center gap-xs">
+              <span className="min-w-[1.8em] font-bold">{i + 1}.</span>
+              <label className="sr-only" htmlFor={`${list}-${i}-title`}>
+                Matter {i + 1} title
+              </label>
+              <input
+                id={`${list}-${i}-title`}
+                value={it.title}
+                onChange={(e) => onUpdate(list, i, { title: e.target.value })}
+                placeholder="Title of the matter"
+                className={cn(fieldClass, 'min-w-[12rem] flex-1 font-bold')}
+              />
+              {withCategory ? (
+                <>
+                  <label className="sr-only" htmlFor={`${list}-${i}-cat`}>
+                    Category
+                  </label>
+                  <select
+                    id={`${list}-${i}-cat`}
+                    value={it.category ?? ''}
+                    onChange={(e) => onUpdate(list, i, { category: (e.target.value || null) as ChedCategory | null })}
+                    className={cn(fieldClass, 'w-auto')}
+                  >
+                    {CATEGORY_ORDER.map((c) => (
+                      <option key={c} value={c}>
+                        {CATEGORY_LABEL[c]}
+                      </option>
+                    ))}
+                    <option value="">Other business</option>
+                  </select>
+                </>
+              ) : null}
+              <div className="no-print flex gap-[2px]">
+                <button
+                  type="button"
+                  onClick={() => onMove(list, i, -1)}
+                  disabled={i === 0}
+                  aria-label={`Move matter ${i + 1} up`}
+                  className="flex h-8 w-8 items-center justify-center rounded-lg text-on-surface-variant hover:bg-surface-container disabled:opacity-30"
+                >
+                  <Icon name="arrow_upward" size={18} />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onMove(list, i, 1)}
+                  disabled={i === items.length - 1}
+                  aria-label={`Move matter ${i + 1} down`}
+                  className="flex h-8 w-8 items-center justify-center rounded-lg text-on-surface-variant hover:bg-surface-container disabled:opacity-30"
+                >
+                  <Icon name="arrow_downward" size={18} />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onRemove(list, i)}
+                  aria-label={`Remove matter ${i + 1}`}
+                  className="flex h-8 w-8 items-center justify-center rounded-lg text-on-surface-variant hover:bg-error/10 hover:text-error"
+                >
+                  <Icon name="close" size={18} />
+                </button>
+              </div>
+            </div>
+            <label className="mt-xs block pl-[1.8em] font-caption text-caption text-on-surface-variant" htmlFor={`${list}-${i}-notes`}>
+              Discussion
+            </label>
+            <div className="pl-[1.8em]">
+              <textarea
+                id={`${list}-${i}-notes`}
+                rows={3}
+                value={it.notes}
+                onChange={(e) => onUpdate(list, i, { notes: e.target.value })}
+                placeholder="What was presented, by whom, and the substance of the discussion."
+                className={fieldClass}
+              />
+            </div>
+            <label className="mt-xs block pl-[1.8em] font-caption text-caption text-on-surface-variant" htmlFor={`${list}-${i}-action`}>
+              Action taken
+            </label>
+            <div className="pl-[1.8em]">
+              <textarea
+                id={`${list}-${i}-action`}
+                rows={1}
+                value={it.action}
+                onChange={(e) => onUpdate(list, i, { action: e.target.value })}
+                placeholder="Approved / approved with amendments / deferred / noted — with mover and seconder."
+                className={fieldClass}
+              />
+            </div>
+          </li>
+        ))}
+      </ol>
+      <button type="button" onClick={() => onAdd(list)} className="no-print mt-sm inline-flex items-center gap-xs font-label-caps text-label-caps text-primary hover:underline">
+        <Icon name="add" size={16} /> {addLabel}
+      </button>
+    </div>
   );
 }

@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { FormEvent, useMemo, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
+import { Logo } from '@/components/ui/Logo';
 
 export default function ForgotPasswordPage() {
   const supabase = useMemo(() => createClient(), []);
@@ -43,6 +44,7 @@ export default function ForgotPasswordPage() {
         </Link>
         <div className="bg-surface-container-lowest rounded-xl border border-outline-variant shadow-primary-lg p-xl">
           <div className="text-center mb-lg">
+            <Logo size={72} className="mx-auto mb-sm" alt="ZPPSU seal" priority />
             <h1 className="font-h2 text-h2 text-primary">Reset your password</h1>
             <p className="font-body-md text-on-surface-variant">
               Enter your institutional email and we&apos;ll send a reset link.

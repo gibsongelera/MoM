@@ -63,7 +63,7 @@ export default function UploadAudioForm({
     setProblem(null);
     setBusy(true);
     try {
-      await uploadAndTranscribe(supabase, { meetingId, file, mimeType: file.type || 'audio/mpeg', language });
+      await uploadAndTranscribe(supabase, { meetingId, file, mimeType: file.type, language });
       toast.success('Recording uploaded. Transcription continues in the background — take attendance while you wait.');
       router.push(`/secretary/meetings/${meetingId}?step=attendance`);
     } catch (err) {
@@ -107,7 +107,7 @@ export default function UploadAudioForm({
         <input
           id={`${fileHintId}-file`}
           type="file"
-          accept="audio/*"
+          accept="audio/*,.webm,.m4a,.opus,video/webm,video/mp4"
           aria-describedby={fileHintId}
           onChange={(e) => {
             setFile(e.target.files?.[0] ?? null);

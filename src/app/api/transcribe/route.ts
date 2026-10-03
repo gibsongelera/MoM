@@ -1,18 +1,22 @@
 /**
  * Submits an already-uploaded recording to the ASR provider.
  *
- * Only submits — it does not wait for a transcript. ElevenLabs (and
- * AssemblyAI) call back through /api/webhooks/* once done. The client should
- * subscribe to this job's row via Supabase Realtime rather than poll here.
+ * Never waits for the transcript in the response: either the provider calls
+ * back through /api/webhooks/* (`webhook` delivery), or — when no webhook can
+ * reach us, e.g. on localhost, or none is registered — the transcription runs
+ * after the response via after() (`sync` delivery; see asrDelivery()). Either
+ * way the client follows this job's row via Supabase Realtime.
  */
-import { NextResponse } from 'next/server';
+import { NextResponse, after } from 'next/server';
 import * as z from 'zod';
 import { createClient } from '@/lib/supabase/server';
 import { requireSession } from '@/lib/ai/guard';
-import { selectProvider, buildKeyterms, AsrProviderError, type AsrLanguage } from '@/lib/asr';
+import { selectProvider, buildKeyterms, asrDelivery, AsrProviderError, type AsrLanguage, type AsrProvider, type AsrRequest } from '@/lib/asr';
+import { asrLog, transcribeAndComplete } from '@/lib/asr/complete';
 
 export const runtime = 'nodejs';
-export const maxDuration = 60;
+// The sync delivery transcribes inside after(), which shares this budget.
+export const maxDuration = 300;
 
 const bodySchema = z.object({
   audioId: z.string().uuid(),
@@ -131,17 +135,40 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Could not read the recording from storage', code: 'storage_error' }, { status: 502 });
   }
 
+  let provider: AsrProvider;
   try {
-    const provider = selectProvider(language as AsrLanguage);
+    provider = selectProvider(language as AsrLanguage);
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : 'No transcription provider for that language';
+    await supabase.from('transcription_jobs').update({ status: 'failed', error_code: 'submit_failed', error_detail: detail }).eq('id', job.id);
+    return NextResponse.json({ error: detail, code: 'submit_failed' }, { status: 400 });
+  }
 
-    const submission = await provider.submit({
-      audioUrl: signed.signedUrl,
-      language: language as AsrLanguage,
-      diarize: true,
-      keyterms,
-      noVerbatim: true,
-      webhookRef: job.id,
-    });
+  const asrRequest: AsrRequest = {
+    audioUrl: signed.signedUrl,
+    language: language as AsrLanguage,
+    diarize: true,
+    keyterms,
+    noVerbatim: true,
+    webhookRef: job.id,
+  };
+
+  const startSync = async () => {
+    await supabase
+      .from('transcription_jobs')
+      .update({ provider: provider.name, model: 'scribe_v2', status: 'processing' })
+      .eq('id', job.id);
+    after(() => transcribeAndComplete(provider, job.id, asrRequest));
+    return NextResponse.json({ jobId: job.id, status: 'processing', delivery: 'sync' }, { status: 202 });
+  };
+
+  if (asrDelivery() === 'sync' && provider.transcribe) {
+    asrLog('submit', { jobId: job.id, delivery: 'sync', provider: provider.name });
+    return startSync();
+  }
+
+  try {
+    const submission = await provider.submit(asrRequest);
 
     await supabase
       .from('transcription_jobs')
@@ -153,10 +180,19 @@ export async function POST(request: Request) {
       })
       .eq('id', job.id);
 
-    return NextResponse.json({ jobId: job.id, status: 'processing' }, { status: 202 });
+    asrLog('submit', { jobId: job.id, delivery: 'webhook', provider: provider.name, providerJobId: submission.providerJobId });
+    return NextResponse.json({ jobId: job.id, status: 'processing', delivery: 'webhook' }, { status: 202 });
   } catch (err) {
+    // No webhook registered in the provider dashboard: transcribe directly
+    // instead of failing the upload.
+    if (err instanceof AsrProviderError && err.code === 'no_webhooks_configured' && provider.transcribe) {
+      asrLog('webhook_unavailable_fallback_sync', { jobId: job.id, provider: provider.name }, 'warn');
+      return startSync();
+    }
+
     const detail =
       err instanceof AsrProviderError ? err.message : 'Failed to submit to the transcription provider';
+    asrLog('submit_failed', { jobId: job.id, detail: detail.slice(0, 300) }, 'error');
 
     await supabase
       .from('transcription_jobs')

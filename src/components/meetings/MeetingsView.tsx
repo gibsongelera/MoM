@@ -211,7 +211,7 @@ function MeetingCard({ meeting: m, onEdit }: { meeting: MeetingListItem; onEdit:
         </Link>
       </h3>
       {m.project_title ? <p className="mt-xs font-body-sm text-tertiary">{m.project_title}</p> : null}
-      <dl className="mt-sm flex flex-col gap-xs font-body-sm text-on-surface-variant">
+      <dl className="mb-md mt-sm flex flex-col gap-xs font-body-sm text-on-surface-variant">
         <div className="flex items-center gap-xs">
           <dt>
             <Icon name="schedule" size={16} />
@@ -241,11 +241,13 @@ function MeetingCard({ meeting: m, onEdit }: { meeting: MeetingListItem; onEdit:
           </dd>
         </div>
       </dl>
-      <div className="mt-md flex gap-sm border-t border-outline-variant pt-md">
-        <Link href={`/secretary/meetings/${m.id}`} className={buttonClasses('primary', 'sm', 'flex-1')}>
+      {/* mt-auto pins the actions to the bottom so Open / Edit line up across a row of cards of different heights. */}
+      <div className="mt-auto flex items-stretch gap-sm border-t border-outline-variant pt-md">
+        <Link href={`/secretary/meetings/${m.id}`} className={buttonClasses('primary', 'md', 'flex-1 pl-sm')}>
+          <Icon name="open_in_new" size={18} />
           Open
         </Link>
-        <Button variant="secondary" size="sm" icon="edit" onClick={onEdit} aria-label={`Edit ${m.title}`}>
+        <Button variant="secondary" icon="edit" onClick={onEdit} aria-label={`Edit ${m.title}`}>
           Edit
         </Button>
       </div>

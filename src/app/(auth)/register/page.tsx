@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
+import { Logo } from '@/components/ui/Logo';
 
 type Department = { id: string; name: string; short: string };
 
@@ -98,6 +99,7 @@ export default function RegisterPage() {
     <main className="min-h-screen bg-background p-gutter flex items-center justify-center">
       <div className="w-full max-w-[700px] bg-surface-container-lowest rounded-xl border border-outline-variant shadow-primary-lg p-xl">
         <div className="text-center mb-lg">
+          <Logo size={72} className="mx-auto mb-sm" alt="ZPPSU seal" priority />
           <h1 className="font-h1 text-h1 text-primary">Create your account</h1>
           <p className="font-body-md text-on-surface-variant">
             Join the ZPPSU SmartMin institutional platform.

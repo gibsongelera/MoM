@@ -40,3 +40,28 @@ export async function requireStaff(): Promise<StaffCaller | null> {
   if (profile.role !== 'admin' && profile.role !== 'head' && profile.role !== 'secretary') return null;
   return { userId: session.userId, role: profile.role, departmentId: profile.department_id };
 }
+
+export interface ActiveCaller {
+  userId: string;
+  role: UserRole;
+  departmentId: string | null;
+  name: string;
+}
+
+/**
+ * Any signed-in, ACTIVE account (faculty included). For paid features the
+ * client asked faculty to have too — their own recordings and the AI
+ * assistant — where every read still goes through RLS as the caller.
+ */
+export async function requireActive(): Promise<ActiveCaller | null> {
+  const session = await requireSession();
+  if (!session) return null;
+  const supabase = await createClient();
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('role, active, department_id, name')
+    .eq('id', session.userId)
+    .maybeSingle();
+  if (!profile?.active) return null;
+  return { userId: session.userId, role: profile.role, departmentId: profile.department_id, name: profile.name };
+}

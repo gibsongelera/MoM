@@ -16,6 +16,7 @@ import type { DashboardUser } from '@/lib/auth/requireRole';
 import { initials } from '@/lib/utils/initials';
 import { useMediaQuery } from '@/lib/hooks/useMediaQuery';
 import { Icon } from '@/components/ui/Icon';
+import { Logo } from '@/components/ui/Logo';
 import { cn } from '@/lib/ui/cn';
 
 type NavLink = { href: string; icon: string; label: string };
@@ -118,9 +119,7 @@ export default function Sidebar({
     >
       <div className="px-lg mb-lg flex items-center justify-between gap-sm">
         <div className="flex items-center gap-sm">
-          <div className="w-10 h-10 rounded-full bg-primary text-on-primary flex items-center justify-center shadow-primary-md">
-            <Icon name="account_balance" size={24} filled />
-          </div>
+          <Logo size={44} alt="" priority />
           <div>
             <p className="font-h3 text-h3 text-primary leading-tight">ZPPSU SmartMin</p>
             <p className="font-caption text-caption text-on-surface-variant">Institutional Governance</p>
